@@ -2,8 +2,8 @@
 Changelog for package trajopt_sqp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.34.4 (2026-02-18)
+-------------------
 * Add warm start functionality to QPSolver
 * Fix bugs and performance issues
 * Update ifopt trust region solver to attempt inplace update of qp solver

@@ -2,8 +2,8 @@
 Changelog for package trajopt_sco
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.34.4 (2026-02-18)
+-------------------
 * Reduce memory allocations with sqp affine and quad expressions
 * Do not use BPMPD with arm or if processor is unknown
 * Reduce memory allocation in trajopt_ifopt and trajopt_sqp

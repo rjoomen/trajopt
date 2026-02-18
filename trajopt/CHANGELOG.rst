@@ -2,8 +2,8 @@
 Changelog for package trajopt
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.34.4 (2026-02-18)
+-------------------
 * Fix trajopt joint term unit tests
 * Reduce memory allocation in trajopt_ifopt and trajopt_sqp
 * Fix bug with missing throw on exceptions

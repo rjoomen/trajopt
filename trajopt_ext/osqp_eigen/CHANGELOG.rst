@@ -2,8 +2,8 @@
 Changelog for package osqp_eigen
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.34.4 (2026-02-18)
+-------------------
 * Change name of OsqpEigen Ext package, as it collided with OsqpEigen proper
 * Add nodes variable set (`#438 <https://github.com/tesseract-robotics/trajopt/issues/438>`_)
 * Contributors: Levi Armstrong, Roelof Oomen

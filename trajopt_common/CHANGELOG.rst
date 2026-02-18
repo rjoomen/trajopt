@@ -2,8 +2,8 @@
 Changelog for package trajopt_utils
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.34.4 (2026-02-18)
+-------------------
 * Do not add compiler option -mno-avx for arm or if processor is unknown
 * Update cache to also be a pool of object to retrieve unused objects (`#530 <https://github.com/tesseract-robotics/trajopt/issues/530>`_)
 * Reduce memory allocation in trajopt_ifopt and trajopt_sqp
