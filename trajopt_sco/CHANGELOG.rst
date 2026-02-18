@@ -2,17 +2,16 @@
 Changelog for package trajopt_sco
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-0.34.3 (2026-02-03)
--------------------
-
-0.34.2 (2026-02-03)
--------------------
+Forthcoming
+-----------
+* Reduce memory allocations with sqp affine and quad expressions
+* Do not use BPMPD with arm or if processor is unknown
 * Reduce memory allocation in trajopt_ifopt and trajopt_sqp
 * Copilot review changes (`#504 <https://github.com/tesseract-robotics/trajopt/issues/504>`_)
 * Add dynamic constraint support
 * Add nodes variable set (`#438 <https://github.com/tesseract-robotics/trajopt/issues/438>`_)
 * Switch to using Cereal for serialization
-* Contributors: Levi Armstrong
+* Contributors: Levi Armstrong, Roelof Oomen
 
 0.33.0 (2025-10-28)
 -------------------

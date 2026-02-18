@@ -2,8 +2,14 @@
 Changelog for package trajopt_sqp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-0.34.3 (2026-02-03)
--------------------
+Forthcoming
+-----------
+* Add warm start functionality to QPSolver
+* Fix bugs and performance issues
+* Update ifopt trust region solver to attempt inplace update of qp solver
+* Avoid prune in ifopt code because it changes sparsity
+* Disable ifopt warmstart
+* Reduce memory allocations with sqp affine and quad expressions
 * Update trajopt_ifopt cartesian pose constraint to align with legacy version
 * Contributors: Levi Armstrong
 

@@ -2,11 +2,9 @@
 Changelog for package trajopt_utils
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-0.34.3 (2026-02-03)
--------------------
-
-0.34.2 (2026-02-03)
--------------------
+Forthcoming
+-----------
+* Do not add compiler option -mno-avx for arm or if processor is unknown
 * Update cache to also be a pool of object to retrieve unused objects (`#530 <https://github.com/tesseract-robotics/trajopt/issues/530>`_)
 * Reduce memory allocation in trajopt_ifopt and trajopt_sqp
 * Reduce allocations
@@ -14,7 +12,7 @@ Changelog for package trajopt_utils
 * Cleanup doxygen file headers
 * Remove old console bridge cmake target logic
 * Switch to using Cereal for serialization
-* Contributors: Levi Armstrong
+* Contributors: Levi Armstrong, Roelof Oomen
 
 0.33.0 (2025-10-28)
 -------------------

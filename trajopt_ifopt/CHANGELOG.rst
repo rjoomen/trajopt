@@ -2,8 +2,10 @@
 Changelog for package trajopt_ifopt
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-0.34.3 (2026-02-03)
--------------------
+Forthcoming
+-----------
+* Avoid computing number of vars in composite
+* Fix bugs and performance issues
 * Update trajopt_ifopt cartesian pose constraint to align with legacy version
 * Contributors: Levi Armstrong
 
