@@ -128,7 +128,9 @@ struct ConvexProblem
 
 Eigen::VectorXd ConvexProblem::evaluateConvexCosts(const Eigen::Ref<const Eigen::VectorXd>& var_vals) const
 {
-  /** @note The legacy trajop appears to use all variables include slack for convex cost evaluation */
+  /** @note Matches SCO's ConvexObjective::value(): penalty cost = sum_k |coeffs[k]*f_lin_k(x_nlp)|.
+   *  Only NLP variables are used — slack variables satisfy the equality exactly at the QP solution
+   *  and would otherwise cancel the NLP contribution, yielding zero. */
   const auto total_cost = static_cast<Eigen::Index>(objective_term_infos.size() + penalty_constraint_infos.size());
 
   if (total_cost == 0)
@@ -170,7 +172,9 @@ Eigen::VectorXd ConvexProblem::evaluateConvexCosts(const Eigen::Ref<const Eigen:
       continue;
     }
 
-    auto jac = constraint_matrix.middleRows(row_offset, c_info.rows);
+    // NLP columns only: slash columns satisfy the equality exactly at the QP solution, so including
+    // them would always yield ~0. SCO evaluates ConvexObjective::value() = pos+neg using NLP vars.
+    auto jac = constraint_matrix.middleRows(row_offset, c_info.rows).leftCols(n_nlp_vars);
     auto constant = constraint_constant.segment(row_offset, c_info.rows);
 
     // Ensure scratch buffers big enough (no allocation after first growth)
@@ -182,15 +186,20 @@ Eigen::VectorXd ConvexProblem::evaluateConvexCosts(const Eigen::Ref<const Eigen:
     auto val = scratch_val.head(c_info.rows);
     auto err = scratch_err.head(c_info.rows);
 
-    // scratch_val = constant + jac * var_vals
-    val = constant;                   // copy into scratch (but no alloc)
-    val.noalias() += jac * var_vals;  // mat-vec into existing memory
+    // scratch_val = constant + jac * x_nlp  (matches SCO: pos+neg = |coeffs[k]*f_lin_k(x)|)
+    val = constant;                    // copy into scratch (but no alloc)
+    val.noalias() += jac * var_block;  // NLP vars only
 
-    // compute violations in-place
-    trajopt_ifopt::calcBoundsViolations(err, val, c_info.bounds);
-
-    costs(cost_idx++) = err.sum();
-    assert(!(err.array() < -1e-8).any());
+    // val is now coeff_k * linearized_cnt (Jacobian and constant pre-scaled in convexify()).
+    // Compare to coeff_k * NLP_bounds; violation is already coefficient-weighted.
+    for (Eigen::Index k = 0; k < c_info.rows; ++k)
+    {
+      const double c = c_info.coeffs(k);
+      err[k] = std::max(0.0, val[k] - (c * c_info.bounds[static_cast<std::size_t>(k)].getUpper())) +
+               std::max(0.0, (c * c_info.bounds[static_cast<std::size_t>(k)].getLower()) - val[k]);
+    }
+    costs(cost_idx++) = err.head(c_info.rows).sum();
+    assert(!(err.head(c_info.rows).array() < -1e-8).any());
     row_offset += c_info.rows;
   }
 
@@ -231,10 +240,15 @@ ConvexProblem::evaluateConvexConstraintViolations(const Eigen::Ref<const Eigen::
     val = constant;                    // copy into scratch (but no alloc)
     val.noalias() += jac * var_block;  // mat-vec into existing memory
 
-    // compute violations in-place
-    trajopt_ifopt::calcBoundsViolations(err, val, c_info.bounds);
-
-    violations(cnt_idx++) = err.sum();
+    // val is now coeff_k * linearized_cnt (Jacobian and constant pre-scaled in convexify()).
+    // Compare to coeff_k * NLP_bounds; violation is already coefficient-weighted.
+    for (Eigen::Index k = 0; k < c_info.rows; ++k)
+    {
+      const double c = c_info.coeffs(k);
+      err[k] = std::max(0.0, val[k] - (c * c_info.bounds[static_cast<std::size_t>(k)].getUpper())) +
+               std::max(0.0, (c * c_info.bounds[static_cast<std::size_t>(k)].getLower()) - val[k]);
+    }
+    violations(cnt_idx++) = err.head(c_info.rows).sum();
     row_index += c_info.rows;
   }
 
@@ -765,6 +779,8 @@ void TrajOptQPProblem::Implementation::convexify()
     auto cc = cvp.constraint_constant.segment(constraint_matrix_row, info.rows);
     cc = cnt->getValues();
     cc.noalias() -= jac * x_initial;
+    // Pre-scale constant by per-row coefficients (matches SCO's exprScale(aff, coeffs_[i]))
+    cc.array() *= info.coeffs.array();
 
     const double merit_coeff =
         (info.type == ComponentInfoType::kMeritConstraint) ? constraint_merit_coeff(merit_constraint_index++) : 1;
@@ -772,11 +788,13 @@ void TrajOptQPProblem::Implementation::convexify()
     {
       for (trajopt_ifopt::Jacobian::InnerIterator it(jac, k); it; ++it)
       {
-        // Originally it pruned these but it changes sparsity so we now set to zero
-        if (std::abs(it.value()) < 1e-7)
+        // Scale Jacobian row by per-row coefficient (matches SCO's exprScale(aff, coeffs_[i])).
+        // it.row() == k for RowMajor sparse matrices.
+        const double scaled_val = it.value() * info.coeffs(it.row());
+        if (std::abs(scaled_val) < 1e-7)
           cache_triplets_2.emplace_back(constraint_matrix_row + it.row(), it.col(), 0.0);
         else
-          cache_triplets_2.emplace_back(constraint_matrix_row + it.row(), it.col(), it.value());
+          cache_triplets_2.emplace_back(constraint_matrix_row + it.row(), it.col(), scaled_val);
       }
 
       ///////////////////////////////
@@ -785,21 +803,37 @@ void TrajOptQPProblem::Implementation::convexify()
       const auto& cnt_bound = info.bounds[static_cast<std::size_t>(k)];
       const auto cnt_bound_type = cnt_bound.getType();
       const Eigen::Index row = constraint_matrix_row + k;
-      const double constant = cvp.constraint_constant[row];
-      cvp.bounds_lower[row] = cnt_bound.getLower() - constant;
-      cvp.bounds_upper[row] = cnt_bound.getUpper() - constant;
+      const double constant = cvp.constraint_constant[row];  // already scaled by info.coeffs(k)
+      // Scale bounds by per-row coefficient so the QP constraint coeff_k*J*x ∈ [coeff_k*lo, coeff_k*hi]
+      // is represented as: coeff_k*J*x ∈ [coeff_k*lo - coeff_k*cc, coeff_k*hi - coeff_k*cc]
+      cvp.bounds_lower[row] = (cnt_bound.getLower() * info.coeffs(k)) - constant;
+      cvp.bounds_upper[row] = (cnt_bound.getUpper() * info.coeffs(k)) - constant;
 
       //////////////////////////////////////////////////////////
       // Set the slack variables constraint matrix and gradient
       //////////////////////////////////////////////////////////
 
       assert(info.type != ComponentInfoType::kObjectiveSquared);
-      const double coeff = merit_coeff * info.coeffs(k);
+
+      // Skip slack variables for zero-coefficient rows (matches SCO's behaviour of skipping coeffs_[i]==0).
+      // Zero-gradient slack columns create degeneracy in OSQP's KKT system and require much tighter solver
+      // tolerances to resolve. Instead, make the row inactive by setting free bounds — the Jacobian row
+      // stays in the matrix but imposes no constraint.
+      if (info.coeffs(k) == 0.0)
+      {
+        cvp.bounds_lower[row] = -static_cast<double>(INFINITY);
+        cvp.bounds_upper[row] = static_cast<double>(INFINITY);
+        continue;
+      }
+
+      // The Jacobian row has already been pre-scaled by info.coeffs(k) (matching SCO's exprScale(aff, coeffs_[k])).
+      // SCO's addAbs(aff, merit_coeff) uses a flat merit_coeff for the slack gradient regardless of per-row scaling,
+      // so we do the same here.
       if (cnt_bound_type == trajopt_ifopt::BoundsType::kEquality)
       {
         assert(info.type != ComponentInfoType::kPenaltyHinge);
-        cache_slack_gradient.emplace_back(coeff);
-        cache_slack_gradient.emplace_back(coeff);
+        cache_slack_gradient.emplace_back(merit_coeff);
+        cache_slack_gradient.emplace_back(merit_coeff);
         cache_triplets_2.emplace_back(row, current_var_index++, 1.0);
         cache_triplets_2.emplace_back(row, current_var_index++, -1.0);
         cvp.n_slack_vars += 2;
@@ -807,14 +841,14 @@ void TrajOptQPProblem::Implementation::convexify()
       else if (cnt_bound_type == trajopt_ifopt::BoundsType::kLowerBound)
       {
         assert(info.type != ComponentInfoType::kPenaltyAbsolute);
-        cache_slack_gradient.emplace_back(coeff);
+        cache_slack_gradient.emplace_back(merit_coeff);
         cache_triplets_2.emplace_back(row, current_var_index++, 1.0);
         ++cvp.n_slack_vars;
       }
       else if (cnt_bound_type == trajopt_ifopt::BoundsType::kUpperBound)
       {
         assert(info.type != ComponentInfoType::kPenaltyAbsolute);
-        cache_slack_gradient.emplace_back(coeff);
+        cache_slack_gradient.emplace_back(merit_coeff);
         cache_triplets_2.emplace_back(row, current_var_index++, -1.0);
         ++cvp.n_slack_vars;
       }
@@ -1011,7 +1045,8 @@ Eigen::VectorXd TrajOptQPProblem::Implementation::getExactCosts() const
     auto err = scratch_err.head(c->getRows());
 
     trajopt_ifopt::calcBoundsViolations(err, c->getValues(), c->getBounds());
-    g(cost_idx++) = err.sum();
+    // Element-wise coefficient weighting matches convexify() which applies info.coeffs(k) per row.
+    g(cost_idx++) = (err.array() * c->getCoefficients().array()).sum();
   }
 
   return g;
@@ -1035,7 +1070,9 @@ Eigen::VectorXd TrajOptQPProblem::Implementation::getExactConstraintViolations()
     auto err = scratch_err.head(c->getRows());
 
     trajopt_ifopt::calcBoundsViolations(err, c->getValues(), c->getBounds());
-    violations(cnt_idx++) = err.sum();
+    // Element-wise coefficient weighting matches SCO's ConstraintFromErrFunc behaviour:
+    // violation = sum(|err_i * coeff_i|)
+    violations(cnt_idx++) = (err.array() * c->getCoefficients().array()).sum();
   }
 
   return violations;
