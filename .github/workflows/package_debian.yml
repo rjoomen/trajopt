@@ -17,7 +17,7 @@ jobs:
       minor: ${{ steps.extract_tag.outputs.minor }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Ensure all history and tags are fetched
 
@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: target_ws/src
 
@@ -86,11 +86,11 @@ jobs:
             cp ./*.tar.xz $GITHUB_WORKSPACE/artifacts
           fi
 
-      - name: Package osqp_eigen
+      - name: Package osqp_eigen_ext
         shell: bash
         run: |
-          if [ -d $GITHUB_WORKSPACE/target_ws/build/osqp_eigen ]; then
-            cd $GITHUB_WORKSPACE/target_ws/build/osqp_eigen
+          if [ -d $GITHUB_WORKSPACE/target_ws/build/osqp_eigen_ext ]; then
+            cd $GITHUB_WORKSPACE/target_ws/build/osqp_eigen_ext
             cpack --config CPackConfig.cmake
             cp ./*.deb $GITHUB_WORKSPACE/artifacts
             cp ./*.tar.xz $GITHUB_WORKSPACE/artifacts

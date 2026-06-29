@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>trajopt_sqp</name>
-  <version>0.34.4</version>
+  <version>0.35.0</version>
   <description>The trajopt_sqp package</description>
   <maintainer email="levi.armstrong@swri.org">Levi Armstrong</maintainer>
   <license>Apache 2.0</license>
@@ -14,7 +14,7 @@
 
   <build_depend>ros_industrial_cmake_boilerplate</build_depend>
   <depend>libconsole-bridge-dev</depend>
-  <depend>osqp_eigen</depend>
+  <depend>osqp_eigen_ext</depend>
   <depend>trajopt_ifopt</depend>
   <depend>trajopt_common</depend>
   <depend>tesseract</depend>
