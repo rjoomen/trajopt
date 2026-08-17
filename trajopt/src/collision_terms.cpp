@@ -228,7 +228,7 @@ GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals,
 
 //      Eigen::MatrixXd jac_test;
 //      jac_test.resize(6, manip_->numJoints());
-//      tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals, contact_result.link_ids[i].name(),
+//      tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals, contact_result.link_ids[i],
 //      contact_result.nearest_points_local[i]); bool check = jac.isApprox(jac_test, 1e-3); assert(check == true);
 #endif
 
@@ -302,7 +302,7 @@ GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals0,
                                                Eigen::Isometry3d::Identity(),
                                                *manip_,
                                                dofvalst,
-                                               contact_result.link_ids[i].name(),
+                                               contact_result.link_ids[i],
                                                contact_result.nearest_points_local[i]);
       const bool check = jac.isApprox(jac_test, 1e-3);
       assert(check == true);
@@ -929,7 +929,7 @@ void DiscreteCollisionEvaluator::Plot(const std::shared_ptr<tesseract::visualiza
 
       // Eigen::MatrixXd jac_test;
       // jac_test.resize(6, manip_->numJoints());
-      // tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals0, res.link_ids[0].name(),
+      // tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals0, res.link_ids[0],
       // res.nearest_points_local[0]); bool check = jac.isApprox(jac_test, 1e-3); assert(check == true);
 
       const Eigen::VectorXd dist_grad = -res.normal.transpose() * jac.topRows(3);
@@ -949,7 +949,7 @@ void DiscreteCollisionEvaluator::Plot(const std::shared_ptr<tesseract::visualiza
 
       // Eigen::MatrixXd jac_test;
       // jac_test.resize(6, manip_->numJoints());
-      // tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals0, res.link_ids[1].name(),
+      // tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals0, res.link_ids[1],
       // res.nearest_points_local[1]); bool check = jac.isApprox(jac_test, 1e-3); assert(check == true);
 
       const Eigen::VectorXd dist_grad = res.normal.transpose() * jac.topRows(3);
