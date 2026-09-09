@@ -262,6 +262,9 @@ GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals0,
 {
   GradientResults results(margin, coeff);
   Eigen::VectorXd dofvalst = Eigen::VectorXd::Zero(dofvals0.size());
+  // Reused across both links so the map keeps its nodes; get_state_fn_ overwrites every entry, so
+  // nothing carries over between the two.
+  tesseract::common::LinkIdTransformMap link_transforms;
   for (std::size_t i = 0; i < 2; ++i)
   {
     if (manip_->isActiveLinkId(contact_result.link_ids[i]))
@@ -275,26 +278,18 @@ GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals0,
       else
         dofvalst = dofvals0 + (dofvals1 - dofvals0) * contact_result.cc_time[i];
 
-      // Calculate Jacobian
+      // The reference point offset must be rotated by the pose at the configuration the Jacobian is
+      // evaluated at. The contact's stored transforms are the poses at the ends of the interval the
+      // contact was found in, which is not that configuration.
       Eigen::MatrixXd jac = manip_->calcJacobian(dofvalst, contact_result.link_ids[i]);
-
-      // Need to change the base and ref point of the jacobian.
-      // When changing ref point you must provide a vector from the current ref
-      // point to the new ref point.
-      results.gradients[i].scale = 1;
-      Eigen::Isometry3d link_transform = contact_result.transform[i];
+      get_state_fn_(link_transforms, dofvalst);
+      tesseract::common::jacobianChangeRefPoint(
+          jac, link_transforms.at(contact_result.link_ids[i]).linear() * contact_result.nearest_points_local[i]);
 
       assert(contact_result.cc_time[i] >= 0.0 && contact_result.cc_time[i] <= 1.0);
       results.gradients[i].scale = (isTimestep1) ? contact_result.cc_time[i] : (1 - contact_result.cc_time[i]);
-      link_transform = (isTimestep1) ? contact_result.cc_transform[i] : contact_result.transform[i];
-
-      // Since the link transform is known do not call calcJacobian with link point
-      tesseract::common::jacobianChangeRefPoint(jac, link_transform.linear() * contact_result.nearest_points_local[i]);
 
 #ifndef NDEBUG
-      const Eigen::Isometry3d test_link_transform = manip_->calcFwdKin(dofvalst).at(contact_result.link_ids[i]);
-      assert(test_link_transform.isApprox(link_transform, 0.0001));
-
       Eigen::MatrixXd jac_test;
       jac_test.resize(6, manip_->numJoints());
       tesseract::kinematics::numericalJacobian(jac_test,

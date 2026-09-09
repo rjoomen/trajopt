@@ -166,6 +166,22 @@ TEST_F(CastGradientFrameTest, UnsubdividedContactGradientIsUnchanged)  // NOLINT
   expectMatchesReference(at_end.gradients[0].gradient, cr, q1_);
 }
 
+// The two-state entry point picks its own linearisation configuration from cc_time rather than
+// taking one from the caller, so it must rotate the reference point by the pose at that
+// configuration and not by either stored pose.
+TEST_F(CastGradientFrameTest, TwoStateGradientAtInterpolatedState)  // NOLINT
+{
+  const ContactResult cr = makeContact(lerp(q0_, q1_, kSubStart), lerp(q0_, q1_, kSubEnd), kCcTime);
+
+  const GradientResults at_start = evaluator_->GetGradient(q0_, q1_, cr, 0.025, 20.0, false);
+  const GradientResults at_end = evaluator_->GetGradient(q0_, q1_, cr, 0.025, 20.0, true);
+
+  ASSERT_TRUE(at_start.gradients[0].has_gradient);
+  ASSERT_TRUE(at_end.gradients[0].has_gradient);
+  expectMatchesReference(at_start.gradients[0].gradient, cr, lerp(q0_, q1_, kCcTime));
+  expectMatchesReference(at_end.gradients[0].gradient, cr, lerp(q0_, q1_, kCcTime));
+}
+
 // The time weighting is a separate quantity from the reference frame and must not move.
 TEST_F(CastGradientFrameTest, TimeWeightingIsUnchanged)  // NOLINT
 {
