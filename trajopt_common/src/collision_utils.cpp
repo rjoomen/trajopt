@@ -113,9 +113,16 @@ void removeInvalidContactResults(tesseract::collision::ContactResultVector& cont
   contact_results.erase(end, contact_results.end());
 }
 
+/**
+ * @brief Compute one link's gradient contribution for a contact
+ * @param link_transform The pose of @p contact_result.link_ids[i] at @p dofvals. The reference point
+ * is rotated by it, so it must belong to the configuration the jacobian is evaluated at; a pose the
+ * contact happens to carry for some other configuration rotates the offset into the wrong frame.
+ */
 void calcGradient(GradientResults& results,
                   std::size_t i,
                   const Eigen::VectorXd& dofvals,
+                  const Eigen::Isometry3d& link_transform,
                   const tesseract::collision::ContactResult& contact_result,
                   const tesseract::kinematics::JointGroup& manip,
                   bool isTimestep1)
@@ -127,11 +134,7 @@ void calcGradient(GradientResults& results,
   /** @todo update calcJacobian to have out param overload */
   Eigen::MatrixXd jac = manip.calcJacobian(dofvals, contact_result.link_ids[i]);
 
-  // Need to change the base and ref point of the jacobian.
-  // When changing ref point you must provide a vector from the current ref
-  // point to the new ref point.
   link_gradient.scale = 1;
-  Eigen::Isometry3d link_transform = contact_result.transform[i];
   if (contact_result.cc_type[i] != tesseract::collision::ContinuousCollisionType::CCType_None)
   {
     assert(contact_result.cc_time[i] > 0.0 ||
@@ -140,14 +143,15 @@ void calcGradient(GradientResults& results,
            tesseract::common::almostEqualRelativeAndAbs(contact_result.cc_time[i], 1.0));
     link_gradient.scale = (isTimestep1) ? contact_result.cc_time[i] : (1 - contact_result.cc_time[i]);
     link_gradient.cc_type = contact_result.cc_type[i];
-    link_transform = (isTimestep1) ? contact_result.cc_transform[i] : contact_result.transform[i];
     /**
      * @todo Look at decoupling this from the cc_transforms so we only have one gradient for timestep0 and timestep1
      * This will simplify a lot of the data structures if you have a single gradient where you only the scale is
      * different
      */
   }
-  // Since the link transform is known then do not call calcJacobian with link point
+  // Need to change the base and ref point of the jacobian.
+  // When changing ref point you must provide a vector from the current ref
+  // point to the new ref point. Since the link transform is known then do not call calcJacobian with link point.
   tesseract::common::jacobianChangeRefPoint(jac, link_transform.linear() * contact_result.nearest_points_local[i]);
 
   link_gradient.translation_vector = contact_result.normal;
@@ -183,8 +187,10 @@ void getGradient(GradientResults& results,
   results.error_with_buffer = (margin + margin_buffer - contact_result.distance);
   for (std::size_t i = 0; i < 2; ++i)
   {
+    // A discrete contact stores the pose of the state it was found at, which is the state the
+    // jacobian is evaluated at, so no forward kinematics is needed here.
     if (manip.isActiveLinkId(contact_result.link_ids[i]))
-      calcGradient(results, i, dofvals, contact_result, manip, false);
+      calcGradient(results, i, dofvals, contact_result.transform[i], contact_result, manip, false);
   }
   // DebugPrintInfo(res, results.gradients[0], results.gradients[1], dofvals, &res == &(dist_results.front()));
 }
@@ -201,6 +207,9 @@ void getGradient(GradientResults& results,
   results.error_with_buffer = (margin + margin_buffer - contact_result.distance);
 
   Eigen::VectorXd dofvalst = Eigen::VectorXd::Zero(dofvals0.size());
+  // Reused across both links so the map keeps its nodes; calcFwdKin overwrites every entry of the
+  // group, so nothing carries over between the two.
+  tesseract::common::LinkIdTransformMap link_transforms;
   for (std::size_t i = 0; i < 2; ++i)
   {
     if (manip.isActiveLinkId(contact_result.link_ids[i]))
@@ -212,8 +221,14 @@ void getGradient(GradientResults& results,
       else
         dofvalst = dofvals0 + (dofvals1 - dofvals0) * contact_result.cc_time[i];
 
-      calcGradient(results, i, dofvalst, contact_result, manip, false);
-      calcGradient(results, i, dofvalst, contact_result, manip, true);
+      // The poses the contact carries are those of the sub-segment the check reported it from, not
+      // of dofvalst, so both halves need the pose at dofvalst. One call serves both: they share the
+      // configuration and differ only in weighting.
+      manip.calcFwdKin(link_transforms, dofvalst);
+      const Eigen::Isometry3d& link_transform = link_transforms.at(contact_result.link_ids[i]);
+
+      calcGradient(results, i, dofvalst, link_transform, contact_result, manip, false);
+      calcGradient(results, i, dofvalst, link_transform, contact_result, manip, true);
     }
   }
 
