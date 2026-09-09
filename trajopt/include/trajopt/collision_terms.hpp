@@ -233,6 +233,14 @@ protected:
 
   std::pair<ContactResultMapConstPtr, ContactResultVectorConstPtr> GetContactResultCached(const DblVec& x);
 
+  /** @brief Scratch for the link transforms a gradient linearises about. Reused across calls so
+   * the map retains its nodes; get_state_fn_ overwrites the entry of every link its state source
+   * currently holds, which covers every link a gradient reads. It does not erase, so a link the
+   * environment later drops leaves a pose behind - harmless, since a dropped link yields no contact
+   * and so is never read, but it is why entries here must not be trusted as a scene inventory.
+   * Distinct from transforms_cache0_/transforms_cache1_ on purpose: those hold the poses of the
+   * last collision check, which on a contact-cache hit belong to a different state. */
+  tesseract::common::LinkIdTransformMap transforms_gradient_;
   tesseract::common::LinkIdTransformMap transforms_cache0_;
   tesseract::common::LinkIdTransformMap transforms_cache1_;
   tesseract::common::LinkIdTransformMap transforms_diff_update_;
@@ -304,6 +312,28 @@ protected:
   void removeInvalidContactResults(tesseract::collision::ContactResultVector& contact_results, double margin) const;
 
 private:
+  /**
+   * @brief Extracts the gradient information based on the contact results, given link transforms already
+   * computed for @p dofvals
+   * @param dofvals The joint values
+   * @param link_transforms The link transforms at @p dofvals, keyed by link id. Must come from
+   * @ref get_state_fn_ - the same source the collision check produced the contact poses from, the
+   * environment when dynamic_environment_ and the manipulator's own state solver otherwise - and
+   * must contain an entry for every link id in @p contact_result that manip_->isActiveLinkId
+   * accepts
+   * @param contact_result The contact results to compute the gradient
+   * @param margin The link pair the contact margin.
+   * @param coeff The link pair the coefficient/weight.
+   * @param isTimestep1 Indicates if this is the second timestep when computing gradient for continuous collision
+   * @return The gradient results
+   */
+  GradientResults GetGradient(const Eigen::VectorXd& dofvals,
+                              const tesseract::common::LinkIdTransformMap& link_transforms,
+                              const tesseract::collision::ContactResult& contact_result,
+                              double margin,
+                              double coeff,
+                              bool isTimestep1);
+
   CollisionEvaluator() = default;
 };
 

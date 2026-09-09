@@ -198,6 +198,18 @@ GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals,
                                                 double coeff,
                                                 bool isTimestep1)
 {
+  tesseract::common::LinkIdTransformMap link_transforms;
+  get_state_fn_(link_transforms, dofvals);
+  return GetGradient(dofvals, link_transforms, contact_result, margin, coeff, isTimestep1);
+}
+
+GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals,
+                                                const tesseract::common::LinkIdTransformMap& link_transforms,
+                                                const tesseract::collision::ContactResult& contact_result,
+                                                double margin,
+                                                double coeff,
+                                                bool isTimestep1)
+{
   GradientResults results(margin, coeff);
   for (std::size_t i = 0; i < 2; ++i)
   {
@@ -205,32 +217,19 @@ GradientResults CollisionEvaluator::GetGradient(const Eigen::VectorXd& dofvals,
     {
       results.gradients[i].has_gradient = true;
 
-      // Calculate Jacobian
+      // The reference point offset must be rotated by the pose at the configuration the Jacobian is
+      // evaluated at. The contact's stored transforms are the poses at the ends of the interval the
+      // contact was found in, which is not that configuration when the segment was subdivided.
       Eigen::MatrixXd jac = manip_->calcJacobian(dofvals, contact_result.link_ids[i]);
+      tesseract::common::jacobianChangeRefPoint(
+          jac, link_transforms.at(contact_result.link_ids[i]).linear() * contact_result.nearest_points_local[i]);
 
-      // Need to change the base and ref point of the jacobian.
-      // When changing ref point you must provide a vector from the current ref
-      // point to the new ref point.
       results.gradients[i].scale = 1;
-      Eigen::Isometry3d link_transform = contact_result.transform[i];
       if (contact_result.cc_type[i] != tesseract::collision::ContinuousCollisionType::CCType_None)
       {
         assert(contact_result.cc_time[i] >= 0.0 && contact_result.cc_time[i] <= 1.0);
         results.gradients[i].scale = (isTimestep1) ? contact_result.cc_time[i] : (1 - contact_result.cc_time[i]);
-        link_transform = (isTimestep1) ? contact_result.cc_transform[i] : contact_result.transform[i];
       }
-      // Since the link transform is known do not call calcJacobian with link point
-      tesseract::common::jacobianChangeRefPoint(jac, link_transform.linear() * contact_result.nearest_points_local[i]);
-
-#ifndef NDEBUG
-//      Eigen::Isometry3d test_link_transform = manip_->calcFwdKin(dofvals).at(contact_result.link_ids[i]);
-//      assert(test_link_transform.isApprox(link_transform, 0.0001));
-
-//      Eigen::MatrixXd jac_test;
-//      jac_test.resize(6, manip_->numJoints());
-//      tesseract::kinematics::numericalJacobian(jac_test, *manip_, dofvals, contact_result.link_ids[i],
-//      contact_result.nearest_points_local[i]); bool check = jac.isApprox(jac_test, 1e-3); assert(check == true);
-#endif
 
       results.gradients[i].gradient = ((i == 0) ? -1.0 : 1.0) * contact_result.normal.transpose() * jac.topRows(3);
     }
@@ -352,6 +351,12 @@ void CollisionEvaluator::CollisionsToDistanceExpressions(sco::AffExprVector& exp
   // transform for converting data between world frame and manipulator
   // frame.
 
+  // The link transforms at dofvals are the same for every contact in this batch, so compute them
+  // once rather than once per contact. Skipped when there are no contacts, since the loop below
+  // never reads them.
+  if (!dist_results.empty())
+    get_state_fn_(transforms_gradient_, dofvals);
+
   exprs.clear();
   exprs_margin.clear();
   exprs_coeff.clear();
@@ -366,7 +371,7 @@ void CollisionEvaluator::CollisionsToDistanceExpressions(sco::AffExprVector& exp
     pair.assign(contact_result.link_ids[0], contact_result.link_ids[1]);
     const double margin = margin_data_.getCollisionMargin(pair);
     const double coeff = coeff_data_.getCollisionCoeff(pair);
-    GradientResults grad = GetGradient(dofvals, contact_result, margin, coeff, isTimestep1);
+    GradientResults grad = GetGradient(dofvals, transforms_gradient_, contact_result, margin, coeff, isTimestep1);
     for (const auto& g : grad.gradients)
     {
       if (g.has_gradient)
