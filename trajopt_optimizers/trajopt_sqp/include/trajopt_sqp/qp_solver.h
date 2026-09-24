@@ -104,6 +104,13 @@ public:
   virtual Eigen::VectorXd getSolution() = 0;
 
   /**
+   * @brief The duality gap of the most recent solve: unscaled, non-negative, and an upper bound on how far the
+   * returned solution's objective lies above the QP optimum
+   * @return The gap, or +infinity when the most recent solve returned no solution or no certificate
+   */
+  virtual double getDualityGap() const = 0;
+
+  /**
    * @brief Updates the cost hessian
    * @param hessian The QP hessian. Should be n_vars x n_vars
    * @return true if successful

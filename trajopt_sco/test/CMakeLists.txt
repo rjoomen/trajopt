@@ -19,6 +19,9 @@ endif()
 if(piqp_FOUND)
   list(APPEND SCO_TEST_SOURCE piqp-model-unit.cpp)
 endif()
+if(osqp_FOUND)
+  list(APPEND SCO_TEST_SOURCE osqp-model-unit.cpp)
+endif()
 
 add_executable(${PROJECT_NAME}-test ${SCO_TEST_SOURCE})
 target_link_libraries(

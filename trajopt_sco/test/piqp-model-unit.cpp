@@ -1,5 +1,6 @@
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <cmath>
 #include <gtest/gtest.h>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -58,4 +59,19 @@ TEST(PIQPModel, ConfigSettingsAreUsed)  // NOLINT
   model->setObjective(exprSquare(x));
 
   EXPECT_EQ(model->optimize(), CVX_FAILED);
+}
+
+TEST(PIQPModel, DualityGapReportedWithGapCheckOff)  // NOLINT
+{
+  auto config = std::make_shared<PIQPModelConfig>();
+  config->settings.check_duality_gap = false;
+  const Model::Ptr model = createModel(ModelType::PIQP, config);
+  const Var x = model->addVar("x");
+  model->update();
+  model->setObjective(exprSquare(x - 1.0));
+  model->addIneqCnt(x - 0.5, "x_max");
+  model->update();
+  ASSERT_EQ(model->optimize(), CVX_SOLVED);
+  EXPECT_TRUE(std::isfinite(model->getDualityGap()));
+  EXPECT_LT(model->getDualityGap(), 1e-3);
 }

@@ -26,6 +26,7 @@
 
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <limits>
 #include <piqp/piqp.hpp>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -62,6 +63,8 @@ public:
   bool solve() override;
 
   Eigen::VectorXd getSolution() override;
+
+  double getDualityGap() const override;
 
   bool updateHessianMatrix(const trajopt_ifopt::Jacobian& hessian) override;
 
@@ -100,6 +103,7 @@ private:
   Eigen::Index num_cnts_{ 0 };
 
   QPSolverStatus solver_status_{ QPSolverStatus::kUninitialized };
+  double duality_gap_{ std::numeric_limits<double>::infinity() };
 };
 
 }  // namespace trajopt_sqp
