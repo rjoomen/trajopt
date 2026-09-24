@@ -127,6 +127,9 @@ protected:
   std::vector<std::shared_ptr<SQPCallback>> callbacks_;
 
   void constraintMeritCoeffChanged();
+
+  /** @brief Whether best_var_vals satisfies every constraint to params.cnt_tolerance */
+  bool bestIsFeasible() const;
 };
 
 }  // namespace trajopt_sqp

@@ -132,16 +132,16 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
         break;
     }
 
+    // A limit ends the solve with its own status, whatever the constraints
+    if (status_ == SQPStatus::kIterationLimit || status_ == SQPStatus::kTimeLimit)
+      break;
+
     // Check if constraints are satisfied
     if (verifySQPSolverConvergence())
     {
       status_ = SQPStatus::kConverged;
       break;
     }
-
-    // If status is iteration limit or time limit we need to exit penalty iteration loop
-    if (status_ == SQPStatus::kIterationLimit || status_ == SQPStatus::kTimeLimit)
-      break;
 
     // Set status to running
     status_ = SQPStatus::kRunning;
@@ -160,6 +160,8 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
     TESSERACT_LOG_DEBUG("Penalty iteration limit, optimization couldn't satisfy all constraints");
   }
 
+  results_.best_is_feasible = bestIsFeasible();
+
   // Final Cleanup
   if (SUPER_DEBUG_MODE)
     results_.print();
@@ -167,22 +169,22 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
   qp_problem->setVariables(results_.best_var_vals.data());
 }
 
+bool TrustRegionSQPSolver::bestIsFeasible() const
+{
+  const Eigen::VectorXd& raw = results_.best_constraint_violations.raw;
+  return raw.size() == 0 || raw.maxCoeff() < params.cnt_tolerance;
+}
+
 bool TrustRegionSQPSolver::verifySQPSolverConvergence()
 {
-  // Check if constraints are satisfied
+  if (!bestIsFeasible())
+    return false;
+
   if (results_.best_constraint_violations.raw.size() == 0)
-  {
     TESSERACT_LOG_DEBUG("Optimization has converged and there are no constraints");
-    return true;
-  }
-
-  if (results_.best_constraint_violations.raw.maxCoeff() < params.cnt_tolerance)
-  {
+  else
     TESSERACT_LOG_DEBUG("woo-hoo! constraints are satisfied (to tolerance {:.2e})", params.cnt_tolerance);
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
 void TrustRegionSQPSolver::adjustPenalty()

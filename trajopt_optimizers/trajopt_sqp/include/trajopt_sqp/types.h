@@ -218,6 +218,9 @@ struct SQPResults
   int trust_region_iteration{ 0 };
   int overall_iteration{ 0 };
 
+  /** @brief Whether the best iterate satisfies every constraint to SQPParameters::cnt_tolerance; set on every exit */
+  bool best_is_feasible{ false };
+
   void print() const;
 };
 
@@ -242,6 +245,13 @@ enum class SQPStatus : std::uint8_t
  * @brief Return a string representation of the SQPStatus.
  */
 std::string toString(SQPStatus status);
+
+/**
+ * @brief Whether a finished solve returned a trajectory a caller may use
+ * @details True when the best iterate is feasible and the solve ended converged, on an iteration, penalty-iteration
+ * or time limit, or on a spent QP failure budget. A callback stop or a non-finite merit is never usable.
+ */
+bool isUsable(SQPStatus status, const SQPResults& results);
 
 }  // namespace trajopt_sqp
 
