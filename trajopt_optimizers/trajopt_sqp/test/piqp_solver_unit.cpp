@@ -241,3 +241,26 @@ TEST(PIQPSolverUnit, DualityGapInfiniteAfterFailure)  // NOLINT
   EXPECT_FALSE(solver.solve());
   EXPECT_EQ(solver.getDualityGap(), inf);
 }
+
+TEST(PIQPSolverUnit, DualityGapInfiniteAfterGenuineInfeasibility)  // NOLINT
+{
+  // x0 + x1 >= 3 and x0 + x1 <= 1: a two-coefficient row stays a general constraint, so PIQP itself reports
+  // the infeasibility instead of the row-to-bound conversion rejecting it before any solve
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  PIQPSolver solver;
+  const auto A = makeMatrix(2, 2, { { 0, 0, 1.0 }, { 0, 1, 1.0 }, { 1, 0, 1.0 }, { 1, 1, 1.0 } });
+  Eigen::VectorXd x;
+  EXPECT_FALSE(solveQP(solver, Eigen::Vector2d::Zero(), A, Eigen::Vector2d(3.0, -inf), Eigen::Vector2d(inf, 1.0), x));
+  EXPECT_EQ(solver.getDualityGap(), inf);
+}
+
+TEST(PIQPSolverUnit, DualityGapInfiniteAfterClear)  // NOLINT
+{
+  PIQPSolver solver;
+  setupOneSidedProblem(solver);
+  ASSERT_TRUE(solver.solve());
+  ASSERT_TRUE(std::isfinite(solver.getDualityGap()));
+
+  ASSERT_TRUE(solver.clear());
+  EXPECT_EQ(solver.getDualityGap(), std::numeric_limits<double>::infinity());
+}

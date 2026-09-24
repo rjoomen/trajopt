@@ -142,8 +142,9 @@ bool PIQPSolver::solve()
   solver_.setup(hessian_, gradient_, eq_matrix, eq_values, ineq_matrix, ineq_lower, ineq_upper, x_lower, x_upper);
 
   const piqp::Status status = solver_.solve();
-  // PIQP computes the gap on every iteration, whether or not check_duality_gap is set
-  if (status != piqp::Status::PIQP_UNSOLVED && status != piqp::Status::PIQP_INVALID_SETTINGS)
+  // PIQP computes the gap on every iteration, whether or not check_duality_gap is set, but only a status that
+  // carries a solution makes that gap meaningful; infeasible and failed statuses report a leftover value
+  if (status == piqp::Status::PIQP_SOLVED || status == piqp::Status::PIQP_MAX_ITER_REACHED)
     duality_gap_ = solver_.result().info.duality_gap;
 
   if (status == piqp::Status::PIQP_SOLVED)

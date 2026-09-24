@@ -2,6 +2,7 @@
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <trajopt_sco/expr_op_overloads.hpp>
@@ -47,6 +48,22 @@ TEST(PIQPModel, Infeasible)  // NOLINT
   model->update();
 
   EXPECT_EQ(model->optimize(), CVX_INFEASIBLE);
+}
+
+TEST(PIQPModel, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT
+{
+  // x <= 0 and x >= 1: PIQP itself reports the infeasibility rather than a setup-time rejection
+  const Model::Ptr model = createModel(ModelType::PIQP);
+  const Var x = model->addVar("x");
+  model->update();
+
+  model->setObjective(exprSquare(x));
+  model->addIneqCnt(AffExpr(x), "x_max");
+  model->addIneqCnt(AffExpr(1.0) - x, "x_min");
+  model->update();
+
+  ASSERT_EQ(model->optimize(), CVX_INFEASIBLE);
+  EXPECT_EQ(model->getDualityGap(), std::numeric_limits<double>::infinity());
 }
 
 TEST(PIQPModel, ConfigSettingsAreUsed)  // NOLINT

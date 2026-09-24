@@ -2,6 +2,7 @@
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <trajopt_sco/expr_op_overloads.hpp>
@@ -42,4 +43,25 @@ TEST(OSQPModel, DualityGapFiniteAtIterationCap)  // NOLINT
   setupOneSidedProblem(*model);
   model->optimize();
   EXPECT_TRUE(std::isfinite(model->getDualityGap()));
+}
+
+TEST(OSQPModel, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT
+{
+  // x0 + x1 <= 1 solved first (feasible), then x0 + x1 >= 3 added as a second row: each row is valid on its
+  // own, but together infeasible, so OSQP detects it during the solve rather than rejecting a bound at setup
+  const Model::Ptr model = createModel(ModelType::OSQP);
+  const Var x0 = model->addVar("x0");
+  const Var x1 = model->addVar("x1");
+  model->update();
+  model->setObjective(exprSquare(x0) + exprSquare(x1));
+  model->addIneqCnt(x0 + x1 - 1.0, "upper");
+  model->update();
+  ASSERT_EQ(model->optimize(), CVX_SOLVED);
+  ASSERT_TRUE(std::isfinite(model->getDualityGap()));
+
+  // Reuse the same model so a stale finite gap left over from the feasible solve would show
+  model->addIneqCnt(AffExpr(3.0) - x0 - x1, "lower");
+  model->update();
+  EXPECT_EQ(model->optimize(), CVX_INFEASIBLE);
+  EXPECT_EQ(model->getDualityGap(), std::numeric_limits<double>::infinity());
 }

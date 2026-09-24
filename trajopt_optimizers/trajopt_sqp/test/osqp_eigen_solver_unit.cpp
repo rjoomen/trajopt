@@ -113,3 +113,40 @@ TEST(OSQPEigenSolverUnit, DualityGapInfiniteBeforeAnySolve)  // NOLINT
   setupOneSidedProblem(solver);
   EXPECT_EQ(solver.getDualityGap(), std::numeric_limits<double>::infinity());
 }
+
+TEST(OSQPEigenSolverUnit, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT
+{
+  // Minimize x'x subject to x0 + x1 >= 3 and x0 + x1 <= 1 on separate rows: each row is valid on its own, but
+  // together infeasible, so OSQP detects it during the solve rather than rejecting the bounds update outright
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  const std::vector<Eigen::Triplet<double>> triplets{ { 0, 0, 1.0 }, { 0, 1, 1.0 }, { 1, 0, 1.0 }, { 1, 1, 1.0 } };
+  trajopt_ifopt::Jacobian A(2, 2);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+  trajopt_ifopt::Jacobian hessian(2, 2);
+  hessian.setIdentity();
+
+  OSQPEigenSolver solver;
+  solver.init(2, 2);
+  solver.updateHessianMatrix(hessian);
+  solver.updateGradient(Eigen::Vector2d::Zero());
+  solver.updateLinearConstraintsMatrix(A);
+  solver.updateBounds(Eigen::Vector2d(-inf, -inf), Eigen::Vector2d(inf, 1.0));
+  ASSERT_TRUE(solver.solve());
+  ASSERT_TRUE(std::isfinite(solver.getDualityGap()));
+
+  // Reuse the same solver so a stale finite gap left over from the feasible solve would show
+  solver.updateBounds(Eigen::Vector2d(3.0, -inf), Eigen::Vector2d(inf, 1.0));
+  EXPECT_FALSE(solver.solve());
+  EXPECT_EQ(solver.getDualityGap(), inf);
+}
+
+TEST(OSQPEigenSolverUnit, DualityGapInfiniteAfterClear)  // NOLINT
+{
+  OSQPEigenSolver solver;
+  setupOneSidedProblem(solver);
+  ASSERT_TRUE(solver.solve());
+  ASSERT_TRUE(std::isfinite(solver.getDualityGap()));
+
+  ASSERT_TRUE(solver.clear());
+  EXPECT_EQ(solver.getDualityGap(), std::numeric_limits<double>::infinity());
+}
