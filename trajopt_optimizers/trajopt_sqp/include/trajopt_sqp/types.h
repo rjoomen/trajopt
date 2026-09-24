@@ -120,7 +120,13 @@ struct SQPParameters
   double min_approx_improve = 1e-4;
   /** @brief NLP converges if approx_merit_improve / best_exact_merit < min_approx_improve_frac */
   double min_approx_improve_frac = std::numeric_limits<double>::lowest();
-  /** @brief Max convexifications per penalty iteration; rejected trust-region steps do not count */
+  /**
+   * @brief Convexification budget of each penalty iteration; rejected trust-region steps do not count
+   * @details Reaching it at a feasible iterate ends the solve with kIterationLimit. At an infeasible iterate it ends
+   * the penalty iteration instead: the penalty rises and the next penalty iteration starts, or, once
+   * max_merit_coeff_increases penalty iterations have run, the solve ends with kPenaltyIterationLimit. max_time bounds
+   * the whole run.
+   */
   int max_iter = 50;
 
   /** @brief Trust region is scaled by this when it is shrunk */
@@ -218,6 +224,9 @@ struct SQPResults
   int trust_region_iteration{ 0 };
   int overall_iteration{ 0 };
 
+  /** @brief Whether the best iterate satisfies every constraint to SQPParameters::cnt_tolerance; set on every exit */
+  bool best_is_feasible{ false };
+
   void print() const;
 };
 
@@ -242,6 +251,13 @@ enum class SQPStatus : std::uint8_t
  * @brief Return a string representation of the SQPStatus.
  */
 std::string toString(SQPStatus status);
+
+/**
+ * @brief Whether a finished solve returned a trajectory a caller may use
+ * @details True when the best iterate is feasible and the solve ended converged, on an iteration, penalty-iteration
+ * or time limit, or on a spent QP failure budget. A callback stop or a non-finite merit is never usable.
+ */
+bool isUsable(SQPStatus status, const SQPResults& results);
 
 }  // namespace trajopt_sqp
 

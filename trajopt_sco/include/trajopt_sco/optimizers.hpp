@@ -45,6 +45,8 @@ struct OptResults
   DblVec cost_vals;
   DblVec cnt_viols;
   int n_func_evals{ 0 }, n_qp_solves{ 0 };
+  /** @brief Whether the returned x satisfies every constraint to cnt_tolerance; set on every exit */
+  bool best_is_feasible{ false };
   void clear()
   {
     x.clear();
@@ -54,11 +56,19 @@ struct OptResults
     cnt_viols.clear();
     n_func_evals = 0;
     n_qp_solves = 0;
+    best_is_feasible = false;
   }
   OptResults() { clear(); }
 };
 
 std::ostream& operator<<(std::ostream& o, const OptResults& r);
+
+/**
+ * @brief Whether a finished optimization returned an x a caller may use
+ * @details True when x is feasible and the run ended converged, on an iteration, penalty-iteration or time limit,
+ * or on a spent QP failure budget.
+ */
+bool isUsable(const OptResults& results);
 
 class Optimizer
 {

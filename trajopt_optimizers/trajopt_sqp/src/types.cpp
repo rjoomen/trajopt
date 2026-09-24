@@ -148,4 +148,19 @@ std::string toString(SQPStatus status)
   }
 }
 
+bool isUsable(SQPStatus status, const SQPResults& results)
+{
+  switch (status)
+  {
+    case SQPStatus::kConverged:
+    case SQPStatus::kIterationLimit:
+    case SQPStatus::kPenaltyIterationLimit:
+    case SQPStatus::kTimeLimit:
+    case SQPStatus::kQPSolveFailed:
+      return results.best_is_feasible;
+    default:
+      return false;
+  }
+}
+
 }  // namespace trajopt_sqp

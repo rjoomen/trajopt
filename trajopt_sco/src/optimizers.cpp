@@ -43,6 +43,21 @@ std::string toString(OptStatus status)
   }
 }
 
+bool isUsable(const OptResults& results)
+{
+  switch (results.status)
+  {
+    case OPT_CONVERGED:
+    case OPT_SCO_ITERATION_LIMIT:
+    case OPT_PENALTY_ITERATION_LIMIT:
+    case OPT_TIME_LIMIT:
+    case OPT_FAILED:
+      return results.best_is_feasible;
+    default:
+      return false;
+  }
+}
+
 std::ostream& operator<<(std::ostream& o, const OptResults& r)
 {
   o << "Optimization results:" << '\n'
@@ -736,6 +751,11 @@ OptStatus BasicTrustRegionSQP::optimize()
   assert(results_.x.size() == prob_->getVars().size());
   assert(!prob_->getCosts().empty() || !constraints.empty());
 
+  // Evaluate the start point before any limit can end the run, so feasibility is known on every exit
+  results_.cnt_viols = evaluateConstraintViols(constraints, results_.x);
+  results_.cost_vals = evaluateCosts(prob_->getCosts(), results_.x);
+  ++results_.n_func_evals;
+
   OptStatus retval = INVALID;
 
   using Clock = std::chrono::high_resolution_clock;
@@ -750,14 +770,6 @@ OptStatus BasicTrustRegionSQP::optimize()
       {
         TESSERACT_LOG_INFO("Elapsed time {} has exceeded max time {}", elapsed_time, param_.max_time);
         retval = OPT_TIME_LIMIT;
-
-        if (results_.cnt_viols.empty() || vecMax(results_.cnt_viols) < param_.cnt_tolerance)
-        {
-          retval = OPT_CONVERGED;
-          if (!results_.cnt_viols.empty())
-            TESSERACT_LOG_INFO("woo-hoo! constraints are satisfied (to tolerance {:.2e})", param_.cnt_tolerance);
-        }
-
         goto cleanup;
       }
       callCallbacks();
@@ -765,16 +777,6 @@ OptStatus BasicTrustRegionSQP::optimize()
       if (tesseract::common::isLogLevelEnabled(spdlog::level::debug))
         TESSERACT_LOG_DEBUG("current iterate: {}", CSTR(results_.x));
       TESSERACT_LOG_INFO("iteration {}", iter);
-
-      // speedup: if you just evaluated the cost when doing the line search, use
-      // that
-      if (results_.cost_vals.empty() && results_.cnt_viols.empty())
-      {  // only happens on the first iteration
-        results_.cnt_viols = evaluateConstraintViols(constraints, results_.x);
-        results_.cost_vals = evaluateCosts(prob_->getCosts(), results_.x);
-        assert(results_.n_func_evals == 0);
-        ++results_.n_func_evals;
-      }
 
       // DblVec new_cnt_viols = evaluateConstraintViols(constraints, results_.x);
       // DblVec new_cost_vals = evaluateCosts(prob_->getCosts(), results_.x);
@@ -925,14 +927,6 @@ OptStatus BasicTrustRegionSQP::optimize()
       {
         TESSERACT_LOG_INFO("iteration limit");
         retval = OPT_SCO_ITERATION_LIMIT;
-
-        if (results_.cnt_viols.empty() || vecMax(results_.cnt_viols) < param_.cnt_tolerance)
-        {
-          retval = OPT_CONVERGED;
-          if (!results_.cnt_viols.empty())
-            TESSERACT_LOG_INFO("woo-hoo! constraints are satisfied (to tolerance {:.2e})", param_.cnt_tolerance);
-        }
-
         goto cleanup;
       }
     } /* sqp loop */
@@ -976,6 +970,7 @@ OptStatus BasicTrustRegionSQP::optimize()
 
 cleanup:
   assert(retval != INVALID && "should never happen");
+  results_.best_is_feasible = constraints.empty() || vecMax(results_.cnt_viols) < param_.cnt_tolerance;
   results_.status = retval;
   results_.total_cost = vecSum(results_.cost_vals);
   if (tesseract::common::isLogLevelEnabled(spdlog::level::info))

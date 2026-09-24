@@ -119,8 +119,10 @@ TEST_F(SQPIterationCap, ARoundRunsUpToMaxIterConvexifications)  // NOLINT
   solver.solve(qp);
   EXPECT_EQ(solver.getResults().convexify_iteration, 150);
   EXPECT_NEAR(solver.getResults().best_var_vals[0], 75.0, 1e-3);
-  // Without constraints the iterate is feasible, which ends the solve
-  EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
+  // Without constraints the iterate is feasible, which ends the solve as a usable limit result
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kIterationLimit);
+  EXPECT_TRUE(solver.getResults().best_is_feasible);
+  EXPECT_TRUE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
 TEST_F(SQPIterationCap, IterationLimitAtAnInfeasibleIterateRaisesThePenalty)  // NOLINT
@@ -133,6 +135,8 @@ TEST_F(SQPIterationCap, IterationLimitAtAnInfeasibleIterateRaisesThePenalty)  //
   EXPECT_EQ(solver.getResults().penalty_iteration, 1);
   // Without the limit the growing trust box would take several convexifications to reach the variable bound
   EXPECT_EQ(solver.getResults().convexify_iteration, 1);
+  EXPECT_FALSE(solver.getResults().best_is_feasible);
+  EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
 TEST_F(SQPIterationCap, EachPenaltyIterationGetsItsOwnIterationBudget)  // NOLINT
@@ -156,8 +160,9 @@ TEST_F(SQPIterationCap, ZeroIterationBudgetEndsWithoutAStep)  // NOLINT
     auto solver = makeSolver();
     solver.params.max_iter = 0;
     solver.solve(makeProblem());
-    EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
+    EXPECT_EQ(solver.getStatus(), SQPStatus::kIterationLimit);
     EXPECT_EQ(solver.getResults().overall_iteration, 0);
+    EXPECT_TRUE(solver.getResults().best_is_feasible);
   }
 
   {  // An infeasible start raises the penalty every penalty iteration without a step
@@ -166,6 +171,7 @@ TEST_F(SQPIterationCap, ZeroIterationBudgetEndsWithoutAStep)  // NOLINT
     solver.solve(makeProblem(0.5));
     EXPECT_EQ(solver.getStatus(), SQPStatus::kPenaltyIterationLimit);
     EXPECT_EQ(solver.getResults().overall_iteration, 0);
+    EXPECT_FALSE(solver.getResults().best_is_feasible);
   }
 }
 
