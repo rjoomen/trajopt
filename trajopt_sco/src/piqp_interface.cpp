@@ -238,7 +238,10 @@ CvxOptStatus PIQPModel::optimize()
   }
 
   solution_ = DblVec(solver.result().x.data(), solver.result().x.data() + n);
-  duality_gap_ = solver.result().info.duality_gap;
+  // PIQP computes the gap on every iteration, whether or not check_duality_gap is set, but only a status that
+  // carries a solution makes that gap meaningful; infeasible and failed statuses report a leftover value
+  if (status == piqp::Status::PIQP_SOLVED || status == piqp::Status::PIQP_MAX_ITER_REACHED)
+    duality_gap_ = solver.result().info.duality_gap;
 
   if (status == piqp::Status::PIQP_SOLVED)
     return CVX_SOLVED;

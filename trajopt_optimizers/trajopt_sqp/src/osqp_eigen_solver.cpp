@@ -34,7 +34,15 @@ TRAJOPT_IGNORE_WARNINGS_POP
 namespace
 {
 constexpr bool OSQP_COMPARE_DEBUG_MODE = false;
+
+/** @brief Whether OSQP's info carries a solution for this status, matching OSQP's own has_solution() */
+bool hasSolution(OsqpEigen::Status status)
+{
+  return status != OsqpEigen::Status::PrimalInfeasible && status != OsqpEigen::Status::PrimalInfeasibleInaccurate &&
+         status != OsqpEigen::Status::DualInfeasible && status != OsqpEigen::Status::DualInfeasibleInaccurate &&
+         status != OsqpEigen::Status::NonCvx;
 }
+}  // namespace
 
 namespace trajopt_sqp
 {
@@ -163,9 +171,11 @@ bool OSQPEigenSolver::solve()
   /** @todo Need to check if this is what we want in the new version */
   const auto solveExitFlag = solver_->solveProblem();
   const auto status = solver_->getStatus();
-  // OSQP computes the gap on every termination, whether or not its gap check is enabled
-  duality_gap_ = (solveExitFlag == OsqpEigen::ErrorExitFlag::NoError) ? std::abs(solver_->solver()->info->duality_gap) :
-                                                                        std::numeric_limits<double>::infinity();
+  // OSQP computes the gap on every termination that returns a solution, whether or not its gap check is
+  // enabled; a status without a solution leaves info->duality_gap holding a stale value from an earlier iterate
+  duality_gap_ = (solveExitFlag == OsqpEigen::ErrorExitFlag::NoError && hasSolution(status)) ?
+                     std::abs(solver_->solver()->info->duality_gap) :
+                     std::numeric_limits<double>::infinity();
   if (OSQP_COMPARE_DEBUG_MODE)
     std::cout << "OSQP Status Value: " << static_cast<int>(solver_->getStatus()) << '\n';
 

@@ -72,6 +72,16 @@ namespace sco
 const double OSQP_INFINITY = OSQP_INFTY;
 const bool OSQP_COMPARE_DEBUG_MODE = false;
 
+namespace
+{
+/** @brief Whether OSQP's info carries a solution for this status, matching OSQP's own has_solution() */
+bool hasSolution(OSQPInt status)
+{
+  return status != OSQP_PRIMAL_INFEASIBLE && status != OSQP_PRIMAL_INFEASIBLE_INACCURATE &&
+         status != OSQP_DUAL_INFEASIBLE && status != OSQP_DUAL_INFEASIBLE_INACCURATE && status != OSQP_NON_CVX;
+}
+}  // namespace
+
 OSQPModelConfig::OSQPModelConfig() { setDefaultOSQPSettings(settings); }
 
 void OSQPModelConfig::setDefaultOSQPSettings(OSQPSettings& settings)
@@ -512,9 +522,11 @@ CvxOptStatus OSQPModel::optimize()
   {
     // opt += m_objective.affexpr.constant;
     solution_ = DblVec(osqp_workspace_->solution->x, osqp_workspace_->solution->x + vars_.size());
-    // OSQP computes the gap on every termination, whether or not its gap check is enabled
-    duality_gap_ = std::abs(osqp_workspace_->info->duality_gap);
     auto status = static_cast<int>(osqp_workspace_->info->status_val);
+    // OSQP computes the gap on every termination that returns a solution, whether or not its gap check is
+    // enabled; a status without a solution leaves info->duality_gap holding a stale value from an earlier iterate
+    if (hasSolution(status))
+      duality_gap_ = std::abs(osqp_workspace_->info->duality_gap);
 
     if (OSQP_COMPARE_DEBUG_MODE)
     {
