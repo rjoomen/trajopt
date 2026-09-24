@@ -23,9 +23,15 @@
  */
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <algorithm>
+#include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 #include <vector>
+TRAJOPT_IGNORE_WARNINGS_POP
+
+TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <OsqpEigen/OsqpEigen.h>
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <trajopt_ifopt/core/eigen_types.h>
@@ -56,4 +62,54 @@ TEST(OSQPEigenSolverUnit, SuccessfulSolveClearsFailure)  // NOLINT
   solver.updateBounds(Eigen::Vector2d(-inf, -inf), Eigen::Vector2d(inf, 1.0));
   ASSERT_TRUE(solver.solve());
   EXPECT_EQ(solver.getSolverStatus(), QPSolverStatus::kInitialized);
+}
+
+namespace
+{
+/** @brief Minimize x^2 - 2x subject to x <= 0.5; the optimum x = 0.5 has multiplier 1 on the one-sided row */
+void setupOneSidedProblem(trajopt_sqp::QPSolver& solver)
+{
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  trajopt_ifopt::Jacobian A(1, 1);
+  A.insert(0, 0) = 1.0;
+  trajopt_ifopt::Jacobian hessian(1, 1);
+  hessian.insert(0, 0) = 1.0;
+  solver.init(1, 1);
+  solver.updateHessianMatrix(hessian);
+  solver.updateGradient(Eigen::VectorXd::Constant(1, -2.0));
+  solver.updateLinearConstraintsMatrix(A);
+  solver.updateBounds(Eigen::VectorXd::Constant(1, -inf), Eigen::VectorXd::Constant(1, 0.5));
+}
+}  // namespace
+
+TEST(OSQPEigenSolverUnit, DualityGapMatchesPrimalMinusDualObjective)  // NOLINT
+{
+  OSQPEigenSolver solver;
+  setupOneSidedProblem(solver);
+  ASSERT_TRUE(solver.solve());
+
+  const double x = solver.getSolution()[0];
+  const double y = solver.solver_->getDualSolution()[0];
+  // OSQP's P is twice the QP Hessian: primal 0.5 x'Px + q'x, dual -0.5 x'Px - u * max(y, 0) with only u finite
+  const double primal = (x * x) - (2.0 * x);
+  const double dual = -(x * x) - (0.5 * std::max(y, 0.0));
+  EXPECT_NEAR(solver.getDualityGap(), std::abs(primal - dual), 1e-6);
+  EXPECT_LT(solver.getDualityGap(), 1e-4);
+}
+
+TEST(OSQPEigenSolverUnit, DualityGapFiniteWithInfiniteBoundAtIterationCap)  // NOLINT
+{
+  OSQPEigenSolver solver;
+  solver.solver_->settings()->setMaxIteration(1);
+  solver.solver_->settings()->setPolish(false);
+  setupOneSidedProblem(solver);
+  solver.solve();
+  EXPECT_TRUE(std::isfinite(solver.getDualityGap()));
+}
+
+TEST(OSQPEigenSolverUnit, DualityGapInfiniteBeforeAnySolve)  // NOLINT
+{
+  OSQPEigenSolver solver;
+  setupOneSidedProblem(solver);
+  EXPECT_EQ(solver.getDualityGap(), std::numeric_limits<double>::infinity());
 }

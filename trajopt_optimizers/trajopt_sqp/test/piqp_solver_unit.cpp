@@ -23,6 +23,7 @@
  */
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
 #include <vector>
@@ -193,4 +194,50 @@ TEST(PIQPSolverUnit, DenseKKTSolverFails)  // NOLINT
   EXPECT_FALSE(solveQP(
       solver, Eigen::Vector2d::Zero(), A, Eigen::Matrix<double, 1, 1>(2.0), Eigen::Matrix<double, 1, 1>(2.0), x));
   EXPECT_EQ(solver.getSolverStatus(), QPSolverStatus::kFailed);
+}
+
+namespace
+{
+/** @brief Minimize x^2 - 2x subject to x <= 0.5; the optimum x = 0.5 has multiplier 1 on the one-sided row */
+void setupOneSidedProblem(trajopt_sqp::QPSolver& solver)
+{
+  trajopt_ifopt::Jacobian A(1, 1);
+  A.insert(0, 0) = 1.0;
+  trajopt_ifopt::Jacobian hessian(1, 1);
+  hessian.insert(0, 0) = 1.0;
+  solver.init(1, 1);
+  solver.updateHessianMatrix(hessian);
+  solver.updateGradient(Eigen::VectorXd::Constant(1, -2.0));
+  solver.updateLinearConstraintsMatrix(A);
+  solver.updateBounds(Eigen::VectorXd::Constant(1, -kInf), Eigen::VectorXd::Constant(1, 0.5));
+}
+}  // namespace
+
+TEST(PIQPSolverUnit, DualityGapReportedWithGapCheckOff)  // NOLINT
+{
+  PIQPSolver solver;
+  solver.settings.check_duality_gap = false;
+  setupOneSidedProblem(solver);
+  ASSERT_TRUE(solver.solve());
+  EXPECT_DOUBLE_EQ(solver.getDualityGap(), solver.solver().result().info.duality_gap);
+  EXPECT_TRUE(std::isfinite(solver.getDualityGap()));
+}
+
+TEST(PIQPSolverUnit, DualityGapInfiniteAfterFailure)  // NOLINT
+{
+  // Bound rows with disjoint ranges on one variable: PIQP is never called
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  PIQPSolver solver;
+  trajopt_ifopt::Jacobian A(2, 1);
+  A.insert(0, 0) = 1.0;
+  A.insert(1, 0) = 1.0;
+  trajopt_ifopt::Jacobian hessian(1, 1);
+  hessian.insert(0, 0) = 1.0;
+  solver.init(1, 2);
+  solver.updateHessianMatrix(hessian);
+  solver.updateGradient(Eigen::VectorXd::Zero(1));
+  solver.updateLinearConstraintsMatrix(A);
+  solver.updateBounds(Eigen::Vector2d(1.0, -inf), Eigen::Vector2d(inf, 0.0));
+  EXPECT_FALSE(solver.solve());
+  EXPECT_EQ(solver.getDualityGap(), inf);
 }

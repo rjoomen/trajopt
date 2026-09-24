@@ -163,6 +163,7 @@ DblVec PIQPModel::getVarValues(const VarVector& vars) const
 
 CvxOptStatus PIQPModel::optimize()
 {
+  duality_gap_ = std::numeric_limits<double>::infinity();
   update();
   const auto n = static_cast<Eigen::Index>(vars_.size());
 
@@ -237,6 +238,7 @@ CvxOptStatus PIQPModel::optimize()
   }
 
   solution_ = DblVec(solver.result().x.data(), solver.result().x.data() + n);
+  duality_gap_ = solver.result().info.duality_gap;
 
   if (status == piqp::Status::PIQP_SOLVED)
     return CVX_SOLVED;
@@ -246,6 +248,8 @@ CvxOptStatus PIQPModel::optimize()
     return CVX_INFEASIBLE;
   return CVX_FAILED;
 }
+
+double PIQPModel::getDualityGap() const { return duality_gap_; }
 
 void PIQPModel::setObjective(const AffExpr& expr) { objective_.affexpr = expr; }
 void PIQPModel::setObjective(const QuadExpr& expr) { objective_ = expr; }

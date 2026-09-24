@@ -26,6 +26,8 @@
 
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <cmath>
+#include <limits>
 #include <OsqpEigen/OsqpEigen.h>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -90,6 +92,7 @@ bool OSQPEigenSolver::clear()
   bounds_lower_.resize(0);
   bounds_upper_.resize(0);
   solver_status_ = QPSolverStatus::kUninitialized;
+  duality_gap_ = std::numeric_limits<double>::infinity();
   return true;
 }
 
@@ -101,6 +104,7 @@ bool OSQPEigenSolver::solve()
     if (!solver_->initSolver())
     {
       solver_status_ = QPSolverStatus::kFailed;
+      duality_gap_ = std::numeric_limits<double>::infinity();
       return false;
     }
 
@@ -159,6 +163,9 @@ bool OSQPEigenSolver::solve()
   /** @todo Need to check if this is what we want in the new version */
   const auto solveExitFlag = solver_->solveProblem();
   const auto status = solver_->getStatus();
+  // OSQP computes the gap on every termination, whether or not its gap check is enabled
+  duality_gap_ = (solveExitFlag == OsqpEigen::ErrorExitFlag::NoError) ? std::abs(solver_->solver()->info->duality_gap) :
+                                                                        std::numeric_limits<double>::infinity();
   if (OSQP_COMPARE_DEBUG_MODE)
     std::cout << "OSQP Status Value: " << static_cast<int>(solver_->getStatus()) << '\n';
 
@@ -217,6 +224,8 @@ bool OSQPEigenSolver::solve()
 }
 
 Eigen::VectorXd OSQPEigenSolver::getSolution() { return solver_->getSolution(); }
+
+double OSQPEigenSolver::getDualityGap() const { return duality_gap_; }
 
 bool OSQPEigenSolver::updateHessianMatrix(const trajopt_ifopt::Jacobian& hessian)
 {

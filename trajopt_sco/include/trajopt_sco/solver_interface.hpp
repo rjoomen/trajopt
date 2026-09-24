@@ -96,6 +96,13 @@ public:
   virtual DblVec getVarValues(const VarVector& vars) const = 0;
   virtual CvxOptStatus optimize() = 0;
 
+  /**
+   * @brief The duality gap of the most recent optimize(): unscaled, non-negative, and an upper bound on how far the
+   * returned solution's objective lies above the QP optimum
+   * @details Backends that solve to their own optimality report 0. +infinity means no certificate.
+   */
+  virtual double getDualityGap() const { return 0.0; }
+
   virtual void setObjective(const AffExpr&) = 0;
   virtual void setObjective(const QuadExpr&) = 0;
   virtual void writeToFile(const std::string& fname) const = 0;

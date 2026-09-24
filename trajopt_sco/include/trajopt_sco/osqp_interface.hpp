@@ -3,6 +3,7 @@
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <Eigen/Core>
 #include <osqp.h>
+#include <limits>
 #include <mutex>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -93,6 +94,8 @@ class OSQPModel : public Model
 
   OSQPModelConfig config_; /**< The configuration settings */
 
+  double duality_gap_{ std::numeric_limits<double>::infinity() }; /**< The gap of the most recent optimize() */
+
   std::mutex mutex_; /**< The mutex */
 
 public:
@@ -114,6 +117,7 @@ public:
   // These do not need to be threadsafe
   void update() override;
   CvxOptStatus optimize() override;
+  double getDualityGap() const override;
   void setObjective(const AffExpr&) override;
   void setObjective(const QuadExpr&) override;
   void setVarBounds(const VarVector& vars, const DblVec& lower, const DblVec& upper) override;

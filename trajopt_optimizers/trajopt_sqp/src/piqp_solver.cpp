@@ -87,11 +87,13 @@ bool PIQPSolver::clear()
   bounds_lower_.resize(0);
   bounds_upper_.resize(0);
   solver_status_ = QPSolverStatus::kUninitialized;
+  duality_gap_ = std::numeric_limits<double>::infinity();
   return true;
 }
 
 bool PIQPSolver::solve()
 {
+  duality_gap_ = std::numeric_limits<double>::infinity();
   const double inf = PIQP_INF;
   Eigen::VectorXd x_lower = Eigen::VectorXd::Constant(num_vars_, -inf);
   Eigen::VectorXd x_upper = Eigen::VectorXd::Constant(num_vars_, inf);
@@ -140,6 +142,10 @@ bool PIQPSolver::solve()
   solver_.setup(hessian_, gradient_, eq_matrix, eq_values, ineq_matrix, ineq_lower, ineq_upper, x_lower, x_upper);
 
   const piqp::Status status = solver_.solve();
+  // PIQP computes the gap on every iteration, whether or not check_duality_gap is set
+  if (status != piqp::Status::PIQP_UNSOLVED && status != piqp::Status::PIQP_INVALID_SETTINGS)
+    duality_gap_ = solver_.result().info.duality_gap;
+
   if (status == piqp::Status::PIQP_SOLVED)
   {
     solver_status_ = QPSolverStatus::kInitialized;
@@ -157,6 +163,8 @@ bool PIQPSolver::solve()
 }
 
 Eigen::VectorXd PIQPSolver::getSolution() { return solver_.result().x; }
+
+double PIQPSolver::getDualityGap() const { return duality_gap_; }
 
 bool PIQPSolver::updateHessianMatrix(const trajopt_ifopt::Jacobian& hessian)
 {

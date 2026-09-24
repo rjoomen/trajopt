@@ -1,11 +1,13 @@
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
+#include <cmath>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <sstream>
 #include <string>
 TRAJOPT_IGNORE_WARNINGS_POP
 
+#include <trajopt_sco/expr_op_overloads.hpp>
 #include <trajopt_sco/expr_ops.hpp>
 #include <trajopt_sco/solver_interface.hpp>
 #include <tesseract/common/logging.h>
@@ -249,6 +251,27 @@ TEST_P(SolverInterface, ExprMult_test3)  // NOLINT
   std::cout << "Result: " << aff12.value(soln) << '\n';
   const double answer = (v1_coeff * v1_val + aff1_const) * (v2_coeff * v2_val + aff2_const);
   EXPECT_NEAR(aff12.value(soln), answer, 1e-6);
+}
+
+TEST_P(SolverInterface, DualityGapByBackend)  // NOLINT
+{
+  const Model::Ptr model = createModel(GetParam());
+  const Var x = model->addVar("x");
+  model->update();
+  model->setObjective(exprSquare(x - 1.0));
+  model->addIneqCnt(x - 0.5, "x_max");
+  model->update();
+  ASSERT_EQ(model->optimize(), CVX_SOLVED);
+  if (GetParam() == ModelType::OSQP || GetParam() == ModelType::PIQP)
+  {
+    EXPECT_TRUE(std::isfinite(model->getDualityGap()));
+    EXPECT_LT(model->getDualityGap(), 1e-3);
+  }
+  else
+  {
+    // Backends that solve to their own optimality report no gap
+    EXPECT_EQ(model->getDualityGap(), 0.0);
+  }
 }
 
 INSTANTIATE_TEST_CASE_P(AllSolvers, SolverInterface, testing::ValuesIn(availableSolvers()));
