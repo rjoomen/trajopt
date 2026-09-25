@@ -35,6 +35,7 @@
 #include <tesseract/common/logging.h>
 #include <chrono>
 #include <cassert>
+#include <cmath>
 
 namespace trajopt_sqp
 {
@@ -103,6 +104,16 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
 
   // Initialize solver
   init(qp_problem);
+
+  // A merit that is not finite at the start cannot rank any step
+  if (!std::isfinite(results_.best_exact_merit))
+  {
+    TESSERACT_LOG_ERROR("The merit at the start point is not finite ({})", results_.best_exact_merit);
+    status_ = SQPStatus::kNonFiniteMerit;
+    results_.best_is_feasible = bestIsFeasible();
+    qp_problem->setVariables(results_.best_var_vals.data());
+    return;
+  }
 
   // Penalty Iteration Loop
   for (int penalty_iteration = 0; penalty_iteration < params.max_merit_coeff_increases; penalty_iteration++)
@@ -322,6 +333,18 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
       return;
     }
 
+    // A non-finite merit cannot be compared; reject the step
+    if (!std::isfinite(results_.new_exact_merit) || !std::isfinite(results_.new_approx_merit))
+    {
+      TESSERACT_LOG_WARN("Merit at the trial point is not finite (exact {}, approximate {}); rejecting the step",
+                         results_.new_exact_merit,
+                         results_.new_approx_merit);
+      qp_problem->scaleBoxSize(params.trust_shrink_ratio);
+      qp_solver->updateBounds(qp_problem->getBoundsLower(), qp_problem->getBoundsUpper());
+      results_.box_size = qp_problem->getBoxSize();
+      continue;
+    }
+
     // Check if the entire NLP Converged
     if (results_.approx_merit_improve < -1e-5)
     {
@@ -394,6 +417,14 @@ SQPStatus TrustRegionSQPSolver::solveQPProblem()
   if (succeed)
   {
     results_.new_var_vals = qp_solver->getSolution();
+
+    // A non-finite solution is a failed solve; never evaluate it
+    if (!results_.new_var_vals.allFinite())
+    {
+      TESSERACT_LOG_WARN("QP solver returned a non-finite solution; treating the solve as failed");
+      qp_problem->setVariables(results_.best_var_vals.data());
+      return SQPStatus::kQPSolveFailed;
+    }
 
     // Calculate approximate QP merits (cheap)
     qp_problem->setVariables(results_.new_var_vals.data());

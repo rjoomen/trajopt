@@ -143,6 +143,8 @@ std::string toString(SQPStatus status)
       return "SQP_FAILED";
     case SQPStatus::kStoppedByCallback:
       return "SQP_STOPPED_BY_CALLBACK";
+    case SQPStatus::kNonFiniteMerit:
+      return "SQP_NON_FINITE_MERIT";
     default:
       return "SQP_STATUS_UNKNOWN";
   }

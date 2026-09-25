@@ -6,7 +6,9 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <trajopt_sqp/qp_problem.h>
 #include <trajopt_sqp/qp_solver.h>
@@ -94,15 +96,26 @@ private:
   double gap_{ 0 };
 };
 
-/** @brief Forwards to a real problem; can replace exact costs by call index and records non-finite setVariables */
+/**
+ * @brief Forwards to a real problem; can replace exact costs and exact constraint violations by call index, and
+ * records non-finite setVariables
+ */
 class ScriptedQPProblem : public QPProblem
 {
 public:
   explicit ScriptedQPProblem(std::shared_ptr<QPProblem> inner) : inner_(std::move(inner)) {}
 
-  /** @brief Called with the 1-based getExactCosts call index and the inner costs; returns the costs to report */
+  /** @brief Called with the 1-based exact cost call index and the inner costs; returns the costs to report */
   std::function<Eigen::VectorXd(int, const Eigen::VectorXd&)> exact_costs_hook;
+  /** @brief Counts exact cost evaluations: every getExactCosts call, including the one inside getTotalExactCost */
   mutable int exact_cost_calls{ 0 };
+  /**
+   * @brief Called with the 1-based getExactConstraintViolations call index and the inner violations; returns the
+   * violations to report
+   */
+  std::function<ConstraintViolations(int, const ConstraintViolations&)> exact_violations_hook;
+  /** @brief Counts getExactConstraintViolations calls */
+  mutable int exact_violation_calls{ 0 };
   bool saw_non_finite_variables{ false };
 
   void addConstraintSet(std::shared_ptr<trajopt_ifopt::ConstraintSet> c) override { inner_->addConstraintSet(c); }
@@ -138,7 +151,12 @@ public:
   {
     return inner_->evaluateConvexConstraintViolations(v);
   }
-  ConstraintViolations getExactConstraintViolations() const override { return inner_->getExactConstraintViolations(); }
+  ConstraintViolations getExactConstraintViolations() const override
+  {
+    ++exact_violation_calls;
+    ConstraintViolations violations = inner_->getExactConstraintViolations();
+    return exact_violations_hook ? exact_violations_hook(exact_violation_calls, violations) : violations;
+  }
   void scaleBoxSize(double& scale) override { inner_->scaleBoxSize(scale); }
   void setBoxSize(const Eigen::Ref<const Eigen::VectorXd>& b) override { inner_->setBoxSize(b); }
   void setConstraintMeritCoeff(const Eigen::Ref<const Eigen::VectorXd>& c) override
