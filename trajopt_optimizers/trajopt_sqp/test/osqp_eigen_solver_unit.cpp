@@ -150,3 +150,19 @@ TEST(OSQPEigenSolverUnit, DualityGapInfiniteAfterClear)  // NOLINT
   ASSERT_TRUE(solver.clear());
   EXPECT_EQ(solver.getDualityGap(), std::numeric_limits<double>::infinity());
 }
+
+TEST(OSQPEigenSolverUnit, SmallGradientEntriesReachTheSolver)  // NOLINT
+{
+  // The solved QP must be the scored model: a 5e-8 gradient entry must not be dropped
+  OSQPEigenSolver solver;
+  trajopt_ifopt::Jacobian A(1, 1);
+  A.insert(0, 0) = 1.0;
+  trajopt_ifopt::Jacobian hessian(1, 1);
+  hessian.insert(0, 0) = 1.0;
+  solver.init(1, 1);
+  solver.updateHessianMatrix(hessian);
+  solver.updateGradient(Eigen::VectorXd::Constant(1, 5e-8));
+  solver.updateLinearConstraintsMatrix(A);
+  solver.updateBounds(Eigen::VectorXd::Constant(1, -1.0), Eigen::VectorXd::Constant(1, 1.0));
+  EXPECT_DOUBLE_EQ(solver.solver_->data()->getData()->q[0], 5e-8);
+}
