@@ -249,7 +249,7 @@ std::string toString(SQPStatus status);
 /**
  * @brief Whether a finished solve returned a trajectory a caller may use
  * @details True when the best iterate is feasible and the solve ended converged, on an iteration, penalty-iteration
- * or time limit, or on a spent QP failure budget. A callback stop or a non-finite merit is never usable.
+ * or time limit, or on a spent QP failure budget. A callback stop is never usable.
  */
 bool isUsable(SQPStatus status, const SQPResults& results);
 
