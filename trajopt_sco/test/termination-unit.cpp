@@ -5,7 +5,6 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <cmath>
-#include <limits>
 #include <memory>
 #include <optional>
 
@@ -183,4 +182,14 @@ TEST_F(ScoTermination, FractionalExitUsesTheMeritMagnitude)  // NOLINT
   solver.optimize();
   // A positive improvement over a negative merit must not read as a negative ratio and end the run at the start
   EXPECT_NEAR(solver.x()[0], 3.0, 1e-2);
+}
+
+TEST_F(ScoTermination, LoggingToAMissingDirDoesNotCrash)  // NOLINT
+{
+  // fopen fails on a missing log_dir; optimize() must still return rather than fclose a null stream
+  BasicTrustRegionSQP solver(makeProblem());
+  solver.getParameters().log_results = true;
+  solver.getParameters().log_dir = "/tmp/claude-1002/sco-termination-unit-missing-log-dir";
+  solver.initialize({ 0.0, 0.0 });
+  EXPECT_NO_FATAL_FAILURE(solver.optimize());
 }

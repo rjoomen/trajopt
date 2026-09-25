@@ -1002,15 +1002,14 @@ cleanup:
     TESSERACT_LOG_INFO("\n==================\n{}==================", CSTR(results_));
   callCallbacks();
 
-  // NOLINTBEGIN(clang-analyzer-core.NonNullParamChecker)
-  if (param_.log_results || tesseract::common::isLogLevelEnabled(spdlog::level::debug))
-  {
+  if (log_solver_stream != nullptr)
     std::fclose(log_solver_stream);
+  if (log_vars_stream != nullptr)
     std::fclose(log_vars_stream);
+  if (log_costs_stream != nullptr)
     std::fclose(log_costs_stream);
+  if (log_constraints_stream != nullptr)
     std::fclose(log_constraints_stream);
-  }
-  // NOLINTEND(clang-analyzer-core.NonNullParamChecker)
 
   return retval;
 }
