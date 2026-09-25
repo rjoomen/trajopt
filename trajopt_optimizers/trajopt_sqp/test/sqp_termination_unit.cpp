@@ -271,6 +271,30 @@ TEST_F(SQPTermination, InfiniteStartViolationFailsFast)  // NOLINT
   EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
+TEST_F(SQPTermination, MoreThanNinetyNineConvexifyRoundsRun)  // NOLINT
+{
+  // A far target, a small fixed box and no expansion: every round accepts one short step
+  auto node = std::make_unique<trajopt_ifopt::Node>("Joints");
+  const std::shared_ptr<const trajopt_ifopt::Var> var =
+      node->addVar("position", { "j0" }, Eigen::VectorXd::Zero(1), { trajopt_ifopt::Bounds(-1000.0, 1000.0) });
+  std::vector<std::unique_ptr<trajopt_ifopt::Node>> nodes;
+  nodes.push_back(std::move(node));
+  auto qp = std::make_shared<trajopt_sqp::TrajOptQPProblem>(
+      std::make_shared<trajopt_ifopt::NodesVariables>("trajectory", std::move(nodes)));
+  qp->addCostSet(std::make_shared<trajopt_ifopt::JointPosConstraint>(
+                     Eigen::VectorXd::Constant(1, 100.0), var, Eigen::VectorXd::Ones(1), "Far"),
+                 trajopt_sqp::CostPenaltyType::kSquared);
+  qp->setup();
+
+  auto solver = makeSolver();
+  solver.params.initial_trust_box_size = 0.5;
+  solver.params.trust_expand_ratio = 1.0;
+  solver.params.max_iterations = 150;
+  solver.solve(qp);
+  EXPECT_GT(solver.getResults().overall_iteration, 99);
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kIterationLimit);
+}
+
 int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);

@@ -121,8 +121,8 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
     results_.penalty_iteration = penalty_iteration;
     results_.convexify_iteration = 0;
 
-    // Convexification loop
-    for (int convex_iteration = 1; convex_iteration < 100; convex_iteration++)
+    // Convexification loop: bounded by max_iterations and max_time, since every round solves at least one QP
+    while (true)
     {
       const double elapsed_time = std::chrono::duration<double, std::milli>(Clock::now() - start_time).count() / 1000.0;
       if (elapsed_time > params.max_time)
