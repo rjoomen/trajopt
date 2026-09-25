@@ -5,6 +5,8 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <tesseract/common/logging.h>
 TRAJOPT_IGNORE_WARNINGS_POP
 
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <optional>
 
@@ -13,6 +15,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <trajopt_ifopt/variable_sets/nodes_variables.h>
 #include <trajopt_ifopt/variable_sets/var.h>
 #include <trajopt_sqp/osqp_eigen_solver.h>
+#include <trajopt_sqp/sqp_callback.h>
 #include <trajopt_sqp/trajopt_qp_problem.h>
 #include <trajopt_sqp/trust_region_sqp_solver.h>
 #include <trajopt_sqp/types.h>
@@ -108,6 +111,7 @@ TEST(SQPIsUsable, EveryStatusAndFeasibility)  // NOLINT
     EXPECT_EQ(trajopt_sqp::isUsable(SQPStatus::kTimeLimit, results), feasible);
     EXPECT_EQ(trajopt_sqp::isUsable(SQPStatus::kQPSolveFailed, results), feasible);
     EXPECT_FALSE(trajopt_sqp::isUsable(SQPStatus::kStoppedByCallback, results));
+    EXPECT_FALSE(trajopt_sqp::isUsable(SQPStatus::kNonFiniteMerit, results));
     EXPECT_FALSE(trajopt_sqp::isUsable(SQPStatus::kRunning, results));
   }
 }
@@ -134,6 +138,83 @@ TEST_F(SQPTermination, FailureShrinkingToTinyBoxIsATinyBoxExit)  // NOLINT
   solver.solve(makeProblem());
   EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
   EXPECT_EQ(scripted->solves, 1);
+}
+
+namespace
+{
+/** @brief Records whether any solve saw a non-finite best merit; never stops the solve */
+class BestMeritWatcher : public trajopt_sqp::SQPCallback
+{
+public:
+  bool execute(const trajopt_sqp::QPProblem& /*problem*/, const trajopt_sqp::SQPResults& results) override
+  {
+    saw_non_finite_best |= !std::isfinite(results.best_exact_merit);
+    return true;
+  }
+  bool saw_non_finite_best{ false };
+};
+}  // namespace
+
+TEST_F(SQPTermination, NonFiniteSolutionIsAFailedSolveAndNeverEvaluated)  // NOLINT
+{
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  scripted->script.push_back({ std::nullopt, [](Eigen::VectorXd& x) { x[0] = std::nan(""); }, std::nullopt });
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
+  auto solver = makeSolver(scripted);
+  solver.solve(problem);
+  EXPECT_FALSE(problem->saw_non_finite_variables);
+  EXPECT_GT(scripted->solves, 1);
+  EXPECT_TRUE(solver.getResults().best_var_vals.allFinite());
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
+}
+
+TEST_F(SQPTermination, NonFiniteTrialMeritIsRejected)  // NOLINT
+{
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
+  // Call 1 is the start point; call 2 is the first trial point
+  problem->exact_costs_hook = [](int call, const Eigen::VectorXd& costs) {
+    return call == 2 ? Eigen::VectorXd::Constant(costs.size(), std::nan("")) : costs;
+  };
+  auto solver = makeSolver();
+  auto watcher = std::make_shared<BestMeritWatcher>();
+  solver.registerCallback(watcher);
+  solver.solve(problem);
+  EXPECT_FALSE(watcher->saw_non_finite_best);
+  EXPECT_TRUE(std::isfinite(solver.getResults().best_exact_merit));
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
+  EXPECT_NEAR(solver.getResults().best_var_vals[0], 0.8, 1e-3);
+}
+
+TEST_F(SQPTermination, NonFiniteStartFailsFast)  // NOLINT
+{
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
+  problem->exact_costs_hook = [](int call, const Eigen::VectorXd& costs) {
+    return call == 1 ? Eigen::VectorXd::Constant(costs.size(), std::numeric_limits<double>::infinity()) : costs;
+  };
+  auto solver = makeSolver(scripted);
+  solver.solve(problem);
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kNonFiniteMerit);
+  EXPECT_EQ(scripted->solves, 0);
+  EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
+}
+
+TEST_F(SQPTermination, InfiniteStartViolationFailsFast)  // NOLINT
+{
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem(0.5));
+  problem->exact_violations_hook = [](int call, const trajopt_sqp::ConstraintViolations& v) {
+    if (call != 1)
+      return v;
+    trajopt_sqp::ConstraintViolations out = v;
+    out.raw.setConstant(std::numeric_limits<double>::infinity());
+    out.weighted.setConstant(std::numeric_limits<double>::infinity());
+    return out;
+  };
+  auto solver = makeSolver();
+  solver.solve(problem);
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kNonFiniteMerit);
 }
 
 int main(int argc, char** argv)

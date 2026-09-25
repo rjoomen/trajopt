@@ -36,6 +36,8 @@ std::string toString(OptStatus status)
       return "OPT_TIME_LIMIT";
     case OptStatus::OPT_FAILED:
       return "OPT_FAILED";
+    case OptStatus::OPT_NON_FINITE_MERIT:
+      return "OPT_NON_FINITE_MERIT";
     case OptStatus::INVALID:
       return "INVALID";
     default:
@@ -402,7 +404,7 @@ BasicTrustRegionSQPResults::BasicTrustRegionSQPResults(std::vector<std::string> 
 }
 
 void BasicTrustRegionSQPResults::update(const OptResults& prev_opt_results,
-                                        const Model& model,
+                                        const DblVec& model_var_vals,
                                         const std::vector<ConvexObjective::Ptr>& cost_models,
                                         const std::vector<ConvexConstraints::Ptr>& cnt_models,
                                         const std::vector<ConvexObjective::Ptr>& cnt_cost_models,
@@ -411,7 +413,7 @@ void BasicTrustRegionSQPResults::update(const OptResults& prev_opt_results,
                                         std::vector<double> merit_error_coeffs)
 {
   this->merit_error_coeffs = merit_error_coeffs;
-  model_var_vals = model.getVarValues(model.getVars());
+  this->model_var_vals = model_var_vals;
   model_cost_vals = parent_.evaluateModelCosts(cost_models, model_var_vals);
   model_cnt_viols = parent_.evaluateModelCntViols(cnt_models, model_var_vals);
 
@@ -761,6 +763,15 @@ OptStatus BasicTrustRegionSQP::optimize()
   using Clock = std::chrono::high_resolution_clock;
   auto start_time = Clock::now();
 
+  // A merit that is not finite at the start cannot rank any step
+  const double start_merit = vecSum(results_.cost_vals) + vecDot(results_.cnt_viols, merit_error_coeffs);
+  if (!std::isfinite(start_merit))
+  {
+    TESSERACT_LOG_ERROR("The merit at the start point is not finite ({})", start_merit);
+    retval = OPT_NON_FINITE_MERIT;
+    goto cleanup;  // NOLINT
+  }
+
   for (int merit_increases = 0; merit_increases < param_.max_merit_coeff_increases; ++merit_increases)
   { /* merit adjustment loop */
     for (int iter = 1;; ++iter)
@@ -817,7 +828,19 @@ OptStatus BasicTrustRegionSQP::optimize()
         const CvxOptStatus status = model_->optimize();
 
         ++results_.n_qp_solves;
-        if (status != CVX_SOLVED)
+        DblVec model_var_vals;
+        bool solved = (status == CVX_SOLVED);
+        if (solved)
+        {
+          model_var_vals = model_->getVarValues(model_->getVars());
+          // A non-finite solution is a failed solve; never evaluate it
+          if (!std::all_of(model_var_vals.begin(), model_var_vals.end(), [](double v) { return std::isfinite(v); }))
+          {
+            TESSERACT_LOG_WARN("convex solver returned a non-finite solution; treating the solve as failed");
+            solved = false;
+          }
+        }
+        if (!solved)
         {
           TESSERACT_LOG_WARN("Convex solver failed. Enable debug logging to see solver output. Saving model to "
                              "/tmp/fail.lp");
@@ -845,7 +868,7 @@ OptStatus BasicTrustRegionSQP::optimize()
         }
 
         iteration_results.update(results_,
-                                 *model_,
+                                 model_var_vals,
                                  cost_models,
                                  cnt_models,
                                  cnt_cost_models,
@@ -874,6 +897,16 @@ OptStatus BasicTrustRegionSQP::optimize()
         }
 
         ++results_.n_func_evals;
+
+        // A non-finite merit cannot be compared; reject the step
+        if (!std::isfinite(iteration_results.new_merit) || !std::isfinite(iteration_results.model_merit))
+        {
+          TESSERACT_LOG_WARN("merit at the trial point is not finite (exact {}, model {}); rejecting the step",
+                             iteration_results.new_merit,
+                             iteration_results.model_merit);
+          adjustTrustRegion(param_.trust_shrink_ratio);
+          continue;
+        }
 
         if (iteration_results.approx_merit_improve < -1e-5)
         {
