@@ -13,9 +13,12 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <trajopt_ifopt/variable_sets/nodes_variables.h>
 #include <trajopt_ifopt/variable_sets/var.h>
 #include <trajopt_sqp/osqp_eigen_solver.h>
+#include <trajopt_sqp/sqp_callback.h>
 #include <trajopt_sqp/trajopt_qp_problem.h>
 #include <trajopt_sqp/trust_region_sqp_solver.h>
 #include <trajopt_sqp/types.h>
+
+#include "scripted_qp_solver.h"
 
 using trajopt_sqp::SQPStatus;
 
@@ -128,6 +131,60 @@ TEST(SQPIsUsable, EveryStatusAndFeasibility)  // NOLINT
     EXPECT_FALSE(trajopt_sqp::isUsable(SQPStatus::kStoppedByCallback, results));
     EXPECT_FALSE(trajopt_sqp::isUsable(SQPStatus::kRunning, results));
   }
+}
+
+namespace
+{
+/** @brief Counts its calls and returns a fixed verdict */
+class CountingCallback : public trajopt_sqp::SQPCallback
+{
+public:
+  explicit CountingCallback(bool verdict) : verdict_(verdict) {}
+  bool execute(const trajopt_sqp::QPProblem& /*problem*/, const trajopt_sqp::SQPResults& /*results*/) override
+  {
+    ++calls;
+    return verdict_;
+  }
+  int calls{ 0 };
+
+private:
+  bool verdict_;
+};
+}  // namespace
+
+TEST_F(SQPTermination, SpentFailureBudgetEndsTheSolve)  // NOLINT
+{
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ false, nullptr, std::nullopt };
+  auto solver = makeSolver(scripted);
+  solver.solve(makeProblem());
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kQPSolveFailed);
+  EXPECT_EQ(scripted->solves, solver.params.max_qp_solver_failures + 1);
+  EXPECT_EQ(solver.getResults().overall_iteration, solver.params.max_qp_solver_failures + 1);
+}
+
+TEST_F(SQPTermination, FailureShrinkingToTinyBoxIsATinyBoxExit)  // NOLINT
+{
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  scripted->script.push_back({ false, nullptr, std::nullopt });
+  auto solver = makeSolver(scripted);
+  solver.params.initial_trust_box_size = 1.5e-4;  // one shrink by trust_shrink_ratio lands below min_trust_box_size
+  solver.solve(makeProblem());
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
+  EXPECT_EQ(scripted->solves, 1);
+}
+
+TEST_F(SQPTermination, CallbackStopEndsTheSolve)  // NOLINT
+{
+  auto solver = makeSolver();
+  auto callback = std::make_shared<CountingCallback>(false);
+  solver.registerCallback(callback);
+  solver.solve(makeProblem());
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kStoppedByCallback);
+  EXPECT_EQ(callback->calls, 1);
+  EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
 int main(int argc, char** argv)

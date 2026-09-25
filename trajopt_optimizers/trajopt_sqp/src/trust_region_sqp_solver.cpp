@@ -132,8 +132,9 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
         break;
     }
 
-    // A limit ends the solve with its own status, whatever the constraints
-    if (status_ == SQPStatus::kIterationLimit || status_ == SQPStatus::kTimeLimit)
+    // Limits, a spent QP failure budget and a callback stop end the solve with their own status
+    if (status_ == SQPStatus::kIterationLimit || status_ == SQPStatus::kTimeLimit ||
+        status_ == SQPStatus::kQPSolveFailed || status_ == SQPStatus::kStoppedByCallback)
       break;
 
     // Check if constraints are satisfied
@@ -257,8 +258,9 @@ bool TrustRegionSQPSolver::stepSQPSolver()
   // Trust region loop
   runTrustRegionLoop();
 
-  // Check if the NLP has converged
-  if (status_ == SQPStatus::kConverged)
+  // A converged inner loop, a spent QP failure budget and a callback stop each end this convexification
+  if (status_ == SQPStatus::kConverged || status_ == SQPStatus::kQPSolveFailed ||
+      status_ == SQPStatus::kStoppedByCallback)
     return true;
 
   if (results_.box_size.maxCoeff() < params.min_trust_box_size)
@@ -300,6 +302,7 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
         results_.box_size = qp_problem->getBoxSize();
 
         TESSERACT_LOG_DEBUG("Shrunk trust region. New box size: {:.4f}", results_.box_size[0]);
+        status_ = SQPStatus::kRunning;
         continue;
       }
 
@@ -311,6 +314,7 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
         results_.box_size = qp_problem->getBoxSize();
 
         TESSERACT_LOG_DEBUG("Shrunk trust region to minimum. New box size: {:.4f}", results_.box_size[0]);
+        status_ = SQPStatus::kRunning;
         continue;
       }
 
