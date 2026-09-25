@@ -59,7 +59,7 @@ TEST_F(ScoTermination, IterationLimitKeepsItsStatusWhenFeasible)  // NOLINT
 TEST_F(ScoTermination, TimeLimitBeforeAnySolveJudgesTheStartPoint)  // NOLINT
 {
   BasicTrustRegionSQP solver(makeProblem(0.0));  // start point satisfies the pin
-  solver.getParameters().max_time = 0.0;
+  solver.getParameters().max_time = -1.0;
   solver.initialize({ 0.0, 0.0 });
   EXPECT_EQ(solver.optimize(), OPT_TIME_LIMIT);
   EXPECT_EQ(solver.results().n_qp_solves, 0);
@@ -69,7 +69,7 @@ TEST_F(ScoTermination, TimeLimitBeforeAnySolveJudgesTheStartPoint)  // NOLINT
 TEST_F(ScoTermination, TimeLimitWithViolatedStartIsNotUsable)  // NOLINT
 {
   BasicTrustRegionSQP solver(makeProblem(0.5));
-  solver.getParameters().max_time = 0.0;
+  solver.getParameters().max_time = -1.0;
   solver.initialize({ 0.0, 0.0 });
   EXPECT_EQ(solver.optimize(), OPT_TIME_LIMIT);
   EXPECT_FALSE(solver.results().best_is_feasible);

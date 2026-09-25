@@ -42,8 +42,7 @@ std::shared_ptr<trajopt_sqp::TrajOptQPProblem> makeProblem(std::optional<double>
   qp->addCostSet(cost, trajopt_sqp::CostPenaltyType::kSquared);
   if (constraint_target)
   {
-    // A single-row bound (mismatched against var's 2 DOF) pins only x0; x1 is left out of this
-    // constraint entirely, so it never needs an unbounded row.
+    // Pin only x0.
     const std::vector<trajopt_ifopt::Bounds> cnt_bounds{ trajopt_ifopt::Bounds(*constraint_target,
                                                                                *constraint_target) };
     auto cnt = std::make_shared<trajopt_ifopt::JointPosConstraint>(cnt_bounds, var, Eigen::VectorXd::Ones(1), "Pin");
@@ -57,7 +56,7 @@ trajopt_sqp::TrustRegionSQPSolver makeSolver(std::shared_ptr<trajopt_sqp::QPSolv
 {
   if (!qp_solver)
     qp_solver = std::make_shared<trajopt_sqp::OSQPEigenSolver>();
-  return trajopt_sqp::TrustRegionSQPSolver(std::move(qp_solver));
+  return { std::move(qp_solver) };
 }
 }  // namespace
 
@@ -70,11 +69,21 @@ protected:
 TEST_F(SQPTermination, TimeLimitBeforeAnySolveJudgesTheStartPoint)  // NOLINT
 {
   auto solver = makeSolver();
-  solver.params.max_time = 0.0;
+  solver.params.max_time = -1.0;
   solver.solve(makeProblem());
   EXPECT_EQ(solver.getStatus(), SQPStatus::kTimeLimit);
   EXPECT_EQ(solver.getResults().overall_iteration, 0);
   EXPECT_TRUE(solver.getResults().best_is_feasible);
+}
+
+TEST_F(SQPTermination, TimeLimitWithViolatedStartIsNotUsable)  // NOLINT
+{
+  auto solver = makeSolver();
+  solver.params.max_time = -1.0;
+  solver.solve(makeProblem(5.0));
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kTimeLimit);
+  EXPECT_FALSE(solver.getResults().best_is_feasible);
+  EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
 TEST_F(SQPTermination, ConvergedRunIsFeasibleAndUsable)  // NOLINT
