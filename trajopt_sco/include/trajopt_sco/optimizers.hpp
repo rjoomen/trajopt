@@ -295,7 +295,7 @@ struct BasicTrustRegionSQPResults
   /**
    * @brief Update the structure data for a new iteration
    * @param prev_opt_results The previous optimization results
-   * @param model_var_vals The model variable values of the current solve
+   * @param model_var_vals The model variable values of the current solve; moved into this->model_var_vals
    * @param cost_models The current cost models
    * @param cnt_models The current constraint models
    * @param cnt_cost_models The current constraint cost models
@@ -304,7 +304,7 @@ struct BasicTrustRegionSQPResults
    * @param merit_error_coeff The iteration penalty to apply to constraints
    */
   void update(const OptResults& prev_opt_results,
-              const DblVec& model_var_vals,
+              DblVec model_var_vals,
               const std::vector<ConvexObjective::Ptr>& cost_models,
               const std::vector<ConvexConstraints::Ptr>& cnt_models,
               const std::vector<ConvexObjective::Ptr>& cnt_cost_models,

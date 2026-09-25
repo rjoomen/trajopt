@@ -395,7 +395,7 @@ BasicTrustRegionSQPResults::BasicTrustRegionSQPResults(std::vector<std::string> 
 }
 
 void BasicTrustRegionSQPResults::update(const OptResults& prev_opt_results,
-                                        const DblVec& model_var_vals,
+                                        DblVec model_var_vals,
                                         const std::vector<ConvexObjective::Ptr>& cost_models,
                                         const std::vector<ConvexConstraints::Ptr>& cnt_models,
                                         const std::vector<ConvexObjective::Ptr>& cnt_cost_models,
@@ -404,17 +404,18 @@ void BasicTrustRegionSQPResults::update(const OptResults& prev_opt_results,
                                         std::vector<double> merit_error_coeffs)
 {
   this->merit_error_coeffs = merit_error_coeffs;
-  this->model_var_vals = model_var_vals;
-  model_cost_vals = parent_.evaluateModelCosts(cost_models, model_var_vals);
-  model_cnt_viols = parent_.evaluateModelCntViols(cnt_models, model_var_vals);
+  this->model_var_vals = std::move(model_var_vals);
+  model_cost_vals = parent_.evaluateModelCosts(cost_models, this->model_var_vals);
+  model_cnt_viols = parent_.evaluateModelCntViols(cnt_models, this->model_var_vals);
 
   // the n variables of the OptProb happen to be the first n variables in
   // the Model
-  new_x = DblVec(model_var_vals.begin(), model_var_vals.begin() + static_cast<long int>(prev_opt_results.x.size()));
+  new_x = DblVec(this->model_var_vals.begin(),
+                 this->model_var_vals.begin() + static_cast<long int>(prev_opt_results.x.size()));
 
   if (tesseract::common::isLogLevelEnabled(spdlog::level::debug))
   {
-    const DblVec cnt_costs1 = parent_.evaluateModelCosts(cnt_cost_models, model_var_vals);
+    const DblVec cnt_costs1 = parent_.evaluateModelCosts(cnt_cost_models, this->model_var_vals);
     DblVec cnt_costs2 = model_cnt_viols;
     for (unsigned i = 0; i < cnt_costs2.size(); ++i)
       cnt_costs2[i] *= merit_error_coeffs[i];
@@ -760,7 +761,7 @@ OptStatus BasicTrustRegionSQP::optimize()
   {
     TESSERACT_LOG_ERROR("The merit at the start point is not finite ({})", start_merit);
     retval = OPT_NON_FINITE_MERIT;
-    goto cleanup;  // NOLINT
+    goto cleanup;  // NOLINT(cppcoreguidelines-avoid-goto)
   }
 
   for (int merit_increases = 0; merit_increases < param_.max_merit_coeff_increases; ++merit_increases)
@@ -859,7 +860,7 @@ OptStatus BasicTrustRegionSQP::optimize()
         }
 
         iteration_results.update(results_,
-                                 model_var_vals,
+                                 std::move(model_var_vals),
                                  cost_models,
                                  cnt_models,
                                  cnt_cost_models,
@@ -959,7 +960,7 @@ OptStatus BasicTrustRegionSQP::optimize()
     {
       if (!results_.cnt_viols.empty())
         TESSERACT_LOG_INFO("woo-hoo! constraints are satisfied (to tolerance {:.2e})", param_.cnt_tolerance);
-      goto cleanup;  // NOLINT
+      goto cleanup;  // NOLINT(cppcoreguidelines-avoid-goto)
     }
     else
     {

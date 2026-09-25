@@ -253,6 +253,8 @@ TEST_F(SQPTermination, NonFiniteStartFailsFast)  // NOLINT
 
 TEST_F(SQPTermination, InfiniteStartViolationFailsFast)  // NOLINT
 {
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
   auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem(0.5));
   problem->exact_violations_hook = [](int call, const trajopt_sqp::ConstraintViolations& v) {
     if (call != 1)
@@ -262,9 +264,11 @@ TEST_F(SQPTermination, InfiniteStartViolationFailsFast)  // NOLINT
     out.weighted.setConstant(std::numeric_limits<double>::infinity());
     return out;
   };
-  auto solver = makeSolver();
+  auto solver = makeSolver(scripted);
   solver.solve(problem);
   EXPECT_EQ(solver.getStatus(), SQPStatus::kNonFiniteMerit);
+  EXPECT_EQ(scripted->solves, 0);
+  EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
 int main(int argc, char** argv)
