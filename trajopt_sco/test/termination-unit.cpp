@@ -164,3 +164,23 @@ TEST_F(ScoTermination, NonFiniteStartFailsFast)  // NOLINT
   EXPECT_EQ(model->solves, 0);
   EXPECT_FALSE(isUsable(solver.results()));
 }
+
+namespace
+{
+/** @brief Minimum 3 at x0 = 3; the offset makes the merit negative everywhere near the start */
+double offsetCost(const Eigen::VectorXd& x) { return sq(x(0) - 3.0) - 100.0; }
+}  // namespace
+
+TEST_F(ScoTermination, FractionalExitUsesTheMeritMagnitude)  // NOLINT
+{
+  auto prob = std::make_shared<OptProb>(ModelType::OSQP);
+  prob->createVariables({ "x0" }, { -10.0 }, { 10.0 });
+  prob->addCost(std::make_shared<CostFromFunc>(ScalarOfVector::construct(&offsetCost), prob->getVars(), "offset"));
+  BasicTrustRegionSQP solver(prob);
+  solver.getParameters().min_approx_improve_frac = 1e-3;
+  solver.getParameters().trust_box_size = 1.0;
+  solver.initialize({ 0.0 });
+  solver.optimize();
+  // A positive improvement over a negative merit must not read as a negative ratio and end the run at the start
+  EXPECT_NEAR(solver.x()[0], 3.0, 1e-2);
+}
