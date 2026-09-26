@@ -34,6 +34,17 @@ namespace trajopt_sqp
 // Forward declaration
 class QPProblem;
 
+/** @brief Outcome of a single QP solve */
+enum class QPSolveStatus : std::uint8_t
+{
+  /** @brief The solver met its convergence criteria */
+  kSolved,
+  /** @brief The solver stopped short of its criteria; the solution is a trial point that certifies nothing */
+  kUnconverged,
+  /** @brief No usable solution */
+  kFailed
+};
+
 /**
  * @brief Status codes describing the lifecycle/result of the QP solver.
  *
@@ -93,9 +104,9 @@ public:
 
   /**
    * @brief Solves the QP
-   * @return true if successful
+   * @return kSolved or kUnconverged when getSolution() holds a solution, kFailed otherwise
    */
-  virtual bool solve() = 0;
+  virtual QPSolveStatus solve() = 0;
 
   /**
    * @brief Gets the solution
@@ -106,7 +117,8 @@ public:
   /**
    * @brief The duality gap of the most recent solve: unscaled, non-negative, and an upper bound on how far the
    * returned solution's objective lies above the QP optimum
-   * @return The gap, or +infinity when the most recent solve returned no solution or no certificate
+   * @return The gap, or +infinity when the most recent solve returned no solution. A gap after a kUnconverged or
+   * kFailed solve certifies nothing; callers must check the status solve() returned
    */
   virtual double getDualityGap() const = 0;
 

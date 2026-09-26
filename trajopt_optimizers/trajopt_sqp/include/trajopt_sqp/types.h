@@ -237,6 +237,8 @@ struct SQPResults
   SQPExitReason exit_reason{ SQPExitReason::kNone };
   /** @brief Small-improvement exits the uncertified test would have taken but the certified test did not */
   int n_suppressed_exits{ 0 };
+  /** @brief Unconverged QP solves whose finite solution became a step proposal */
+  int n_unconverged_qp_solves{ 0 };
   /**
    * @brief Whether the most recent inner exit was a tiny-trust-region exit that followed a rejected or failed step
    * from a solve that certified nothing: a failed or unconverged solve, or one whose duality gap is at least

@@ -18,7 +18,7 @@ namespace trajopt_sqp::test
 /** @brief One scripted override of a solve; an empty field leaves the inner solver's result as it is */
 struct ScriptedSolve
 {
-  std::optional<bool> succeeded;
+  std::optional<QPSolveStatus> status;
   std::function<void(Eigen::VectorXd&)> edit_solution;
   std::optional<double> duality_gap;
 };
@@ -37,10 +37,11 @@ public:
 
   bool init(Eigen::Index num_vars, Eigen::Index num_cnts) override { return inner_->init(num_vars, num_cnts); }
   bool clear() override { return inner_->clear(); }
-  bool solve() override
+  QPSolveStatus solve() override
   {
     ++solves;
-    bool succeeded = inner_->solve();
+    inner_->verbosity = verbosity;
+    QPSolveStatus status = inner_->solve();
     solution_ = inner_->getSolution();
     gap_ = inner_->getDualityGap();
     std::optional<ScriptedSolve> step = every_solve;
@@ -49,16 +50,20 @@ public:
       step = script.front();
       script.pop_front();
     }
+    scripted_status_.reset();
     if (step)
     {
-      if (step->succeeded)
-        succeeded = *step->succeeded;
+      if (step->status)
+      {
+        status = *step->status;
+        scripted_status_ = (status == QPSolveStatus::kFailed) ? QPSolverStatus::kFailed : QPSolverStatus::kInitialized;
+      }
       if (step->edit_solution)
         step->edit_solution(solution_);
       if (step->duality_gap)
         gap_ = *step->duality_gap;
     }
-    return succeeded;
+    return status;
   }
   Eigen::VectorXd getSolution() override { return solution_; }
   double getDualityGap() const override { return gap_; }
@@ -88,12 +93,14 @@ public:
     return inner_->updateLinearConstraintsMatrix(matrix);
   }
   bool setWarmStart(const QPProblem& qp_problem) override { return inner_->setWarmStart(qp_problem); }
-  QPSolverStatus getSolverStatus() const override { return inner_->getSolverStatus(); }
+  /** @brief The status the script set for the most recent solve, else the wrapped solver's */
+  QPSolverStatus getSolverStatus() const override { return scripted_status_.value_or(inner_->getSolverStatus()); }
 
 private:
   std::shared_ptr<QPSolver> inner_;
   Eigen::VectorXd solution_;
   double gap_{ 0 };
+  std::optional<QPSolverStatus> scripted_status_;
 };
 
 /**

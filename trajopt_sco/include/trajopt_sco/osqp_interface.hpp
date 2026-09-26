@@ -125,4 +125,7 @@ public:
   void writeToFile(const std::string& fname) const override;
   VarVector getVars() const override;
 };
+
+/** @brief Classify an OSQP status value; infeasibility is kept apart from other failures */
+CvxOptStatus osqpStatusToCvxOptStatus(OSQPInt status_val);
 }  // namespace sco

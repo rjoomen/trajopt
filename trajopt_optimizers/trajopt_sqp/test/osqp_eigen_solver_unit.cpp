@@ -40,6 +40,16 @@ TRAJOPT_IGNORE_WARNINGS_POP
 using trajopt_sqp::OSQPEigenSolver;
 using trajopt_sqp::QPSolverStatus;
 
+TEST(OSQPEigenSolverUnit, StatusClassification)  // NOLINT
+{
+  using trajopt_sqp::QPSolveStatus;
+  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::Solved), QPSolveStatus::kSolved);
+  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::SolvedInaccurate), QPSolveStatus::kUnconverged);
+  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::PrimalInfeasible), QPSolveStatus::kFailed);
+  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::DualInfeasible), QPSolveStatus::kFailed);
+  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::MaxIterReached), QPSolveStatus::kFailed);
+}
+
 TEST(OSQPEigenSolverUnit, SuccessfulSolveClearsFailure)  // NOLINT
 {
   // Minimize x'x subject to x0 + x1 >= 3 and x0 + x1 <= 1: infeasible until the lower bound is dropped
@@ -56,11 +66,11 @@ TEST(OSQPEigenSolverUnit, SuccessfulSolveClearsFailure)  // NOLINT
   solver.updateGradient(Eigen::Vector2d::Zero());
   solver.updateLinearConstraintsMatrix(A);
   solver.updateBounds(Eigen::Vector2d(3.0, -inf), Eigen::Vector2d(inf, 1.0));
-  EXPECT_FALSE(solver.solve());
+  EXPECT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kFailed);
   EXPECT_EQ(solver.getSolverStatus(), QPSolverStatus::kFailed);
 
   solver.updateBounds(Eigen::Vector2d(-inf, -inf), Eigen::Vector2d(inf, 1.0));
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   EXPECT_EQ(solver.getSolverStatus(), QPSolverStatus::kInitialized);
 }
 
@@ -86,7 +96,7 @@ TEST(OSQPEigenSolverUnit, DualityGapMatchesPrimalMinusDualObjective)  // NOLINT
 {
   OSQPEigenSolver solver;
   setupOneSidedProblem(solver);
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
 
   const double x = solver.getSolution()[0];
   const double y = solver.solver_->getDualSolution()[0];
@@ -131,12 +141,12 @@ TEST(OSQPEigenSolverUnit, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT
   solver.updateGradient(Eigen::Vector2d::Zero());
   solver.updateLinearConstraintsMatrix(A);
   solver.updateBounds(Eigen::Vector2d(-inf, -inf), Eigen::Vector2d(inf, 1.0));
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   ASSERT_TRUE(std::isfinite(solver.getDualityGap()));
 
   // Reuse the same solver so a stale finite gap left over from the feasible solve would show
   solver.updateBounds(Eigen::Vector2d(3.0, -inf), Eigen::Vector2d(inf, 1.0));
-  EXPECT_FALSE(solver.solve());
+  EXPECT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kFailed);
   EXPECT_EQ(solver.getDualityGap(), inf);
 }
 
@@ -144,7 +154,7 @@ TEST(OSQPEigenSolverUnit, DualityGapInfiniteAfterClear)  // NOLINT
 {
   OSQPEigenSolver solver;
   setupOneSidedProblem(solver);
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   ASSERT_TRUE(std::isfinite(solver.getDualityGap()));
 
   ASSERT_TRUE(solver.clear());

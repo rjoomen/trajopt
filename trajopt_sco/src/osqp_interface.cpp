@@ -540,9 +540,7 @@ CvxOptStatus OSQPModel::optimize()
       switch (status)
       {
         case OSQP_SOLVED:
-          break;
-        case OSQP_SOLVED_INACCURATE:
-          TESSERACT_LOG_WARN("OSQP solved inaccurate");
+        case OSQP_SOLVED_INACCURATE:  // warned about below at every log level
           break;
         case OSQP_PRIMAL_INFEASIBLE:
           TESSERACT_LOG_WARN("OSQP primal infeasible");
@@ -576,11 +574,11 @@ CvxOptStatus OSQPModel::optimize()
       }
     }
 
-    if (status == OSQP_SOLVED || status == OSQP_SOLVED_INACCURATE)
-      return CVX_SOLVED;
-    if (status == OSQP_PRIMAL_INFEASIBLE || status == OSQP_PRIMAL_INFEASIBLE_INACCURATE ||
-        status == OSQP_DUAL_INFEASIBLE || status == OSQP_DUAL_INFEASIBLE_INACCURATE)
-      return CVX_INFEASIBLE;
+    const CvxOptStatus result = osqpStatusToCvxOptStatus(status);
+    if (result == CVX_UNCONVERGED)
+      TESSERACT_LOG_WARN("OSQP returned an unconverged solution: {}", osqp_workspace_->info->status);
+    if (result != CVX_FAILED)
+      return result;
   }
 
   // Log error
@@ -628,6 +626,24 @@ CvxOptStatus OSQPModel::optimize()
   return CVX_FAILED;
 }
 double OSQPModel::getDualityGap() const { return duality_gap_; }
+
+CvxOptStatus osqpStatusToCvxOptStatus(OSQPInt status_val)
+{
+  switch (status_val)
+  {
+    case OSQP_SOLVED:
+      return CVX_SOLVED;
+    case OSQP_SOLVED_INACCURATE:
+      return CVX_UNCONVERGED;
+    case OSQP_PRIMAL_INFEASIBLE:
+    case OSQP_PRIMAL_INFEASIBLE_INACCURATE:
+    case OSQP_DUAL_INFEASIBLE:
+    case OSQP_DUAL_INFEASIBLE_INACCURATE:
+      return CVX_INFEASIBLE;
+    default:
+      return CVX_FAILED;
+  }
+}
 
 void OSQPModel::setObjective(const AffExpr& expr) { objective_.affexpr = expr; }
 void OSQPModel::setObjective(const QuadExpr& expr) { objective_ = expr; }

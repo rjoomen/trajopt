@@ -11,6 +11,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <optional>
 
 #include <trajopt_ifopt/constraints/joint_position_constraint.h>
+#include <trajopt_ifopt/core/eigen_types.h>
 #include <trajopt_ifopt/variable_sets/node.h>
 #include <trajopt_ifopt/variable_sets/nodes_variables.h>
 #include <trajopt_ifopt/variable_sets/var.h>
@@ -159,10 +160,12 @@ TEST_F(SQPTermination, SpentFailureBudgetEndsTheSolve)  // NOLINT
 {
   auto scripted =
       std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
-  scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ false, nullptr, std::nullopt };
+  scripted->every_solve =
+      trajopt_sqp::test::ScriptedSolve{ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt };
   auto solver = makeSolver(scripted);
   solver.solve(makeProblem());
   EXPECT_EQ(solver.getStatus(), SQPStatus::kQPSolveFailed);
+  EXPECT_EQ(scripted->getSolverStatus(), trajopt_sqp::QPSolverStatus::kFailed);
   EXPECT_EQ(scripted->solves, solver.params.max_qp_solver_failures + 1);
   EXPECT_EQ(solver.getResults().overall_iteration, solver.params.max_qp_solver_failures + 1);
 }
@@ -171,7 +174,7 @@ TEST_F(SQPTermination, FailureShrinkingToTinyBoxIsATinyBoxExit)  // NOLINT
 {
   auto scripted =
       std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
-  scripted->script.push_back({ false, nullptr, std::nullopt });
+  scripted->script.push_back({ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt });
   auto solver = makeSolver(scripted);
   solver.params.initial_trust_box_size = 1.5e-4;  // one shrink by trust_shrink_ratio lands below min_trust_box_size
   solver.solve(makeProblem());
@@ -376,11 +379,60 @@ TEST_F(SQPTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
   EXPECT_TRUE(uncertified_flag);
 }
 
+TEST_F(SQPTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT
+{
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  scripted->every_solve =
+      trajopt_sqp::test::ScriptedSolve{ trajopt_sqp::QPSolveStatus::kUnconverged, nullptr, std::nullopt };
+  auto solver = makeSolver(scripted);
+  solver.solve(makeProblem());
+  EXPECT_EQ(solver.getResults().n_unconverged_qp_solves, scripted->solves);
+  EXPECT_NE(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kSmallImprovement);
+  // Neither small-improvement exit is taken; the solve ends on the tiny box, flagged
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
+  EXPECT_TRUE(solver.getResults().tiny_trust_region_after_uncertified);
+  EXPECT_GT(solver.getResults().n_suppressed_exits, 0);
+  // Proposals were judged and accepted: the solve still reaches the target
+  EXPECT_NEAR(solver.getResults().best_var_vals[0], 0.8, 1e-3);
+  EXPECT_EQ(scripted->getSolverStatus(), trajopt_sqp::QPSolverStatus::kInitialized);
+}
+
+TEST_F(SQPTermination, ScriptedSolverReportsTheScriptedStatusElseTheWrappedOne)  // NOLINT
+{
+  // Minimize x^2 - 2x subject to x <= 0.5
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  trajopt_ifopt::Jacobian A(1, 1);
+  A.insert(0, 0) = 1.0;
+  trajopt_ifopt::Jacobian hessian(1, 1);
+  hessian.insert(0, 0) = 1.0;
+  auto inner = std::make_shared<trajopt_sqp::OSQPEigenSolver>();
+  trajopt_sqp::test::ScriptedQPSolver scripted(inner);
+  scripted.verbosity = 1;
+  scripted.init(1, 1);
+  scripted.updateHessianMatrix(hessian);
+  scripted.updateGradient(Eigen::VectorXd::Constant(1, -2.0));
+  scripted.updateLinearConstraintsMatrix(A);
+  scripted.updateBounds(Eigen::VectorXd::Constant(1, -inf), Eigen::VectorXd::Constant(1, 0.5));
+  scripted.script.push_back({ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt });
+  scripted.script.push_back({ std::nullopt, nullptr, std::nullopt });
+
+  EXPECT_EQ(scripted.solve(), trajopt_sqp::QPSolveStatus::kFailed);
+  EXPECT_EQ(inner->verbosity, 1);
+  EXPECT_EQ(inner->getSolverStatus(), trajopt_sqp::QPSolverStatus::kInitialized);
+  EXPECT_EQ(scripted.getSolverStatus(), trajopt_sqp::QPSolverStatus::kFailed);
+
+  // A step that scripts no status passes the wrapped solver's result and status through
+  EXPECT_EQ(scripted.solve(), trajopt_sqp::QPSolveStatus::kSolved);
+  EXPECT_EQ(scripted.getSolverStatus(), inner->getSolverStatus());
+  EXPECT_EQ(scripted.getSolverStatus(), trajopt_sqp::QPSolverStatus::kInitialized);
+}
+
 TEST_F(SQPTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
 {
   auto scripted =
       std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
-  scripted->script.push_back({ false, nullptr, std::nullopt });
+  scripted->script.push_back({ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt });
   auto solver = makeSolver(scripted);
   solver.params.initial_trust_box_size = 1.5e-4;
   solver.solve(makeProblem());

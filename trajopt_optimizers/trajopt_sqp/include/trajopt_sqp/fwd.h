@@ -20,6 +20,7 @@ struct QuadExprs;
 class QPProblem;
 
 // qp_solver.h
+enum class QPSolveStatus : std::uint8_t;
 enum class QPSolverStatus : std::uint8_t;
 class QPSolver;
 

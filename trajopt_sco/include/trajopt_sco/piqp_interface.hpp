@@ -3,6 +3,7 @@
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <limits>
 #include <mutex>
+#include <piqp/results.hpp>
 #include <piqp/settings.hpp>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -87,4 +88,7 @@ public:
   void writeToFile(const std::string& fname) const override;
   VarVector getVars() const override;
 };
+
+/** @brief Classify a PIQP status; infeasibility is kept apart from other failures */
+CvxOptStatus piqpStatusToCvxOptStatus(piqp::Status status);
 }  // namespace sco

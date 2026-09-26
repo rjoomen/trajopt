@@ -40,6 +40,7 @@ using ConstraintTypeVector = std::vector<ConstraintType>;
 enum CvxOptStatus : std::uint8_t
 {
   CVX_SOLVED,
+  CVX_UNCONVERGED,  // stopped short of the solver's criteria; the values are a trial point that certifies nothing
   CVX_INFEASIBLE,
   CVX_FAILED
 };
@@ -93,13 +94,15 @@ public:
   virtual void setVarBounds(const Var& var, double lower, double upper);
   virtual void setVarBounds(const VarVector& vars, const DblVec& lower, const DblVec& upper) = 0;
   virtual double getVarValue(const Var& var) const;
+  /** @brief Valid after optimize() returned CVX_SOLVED or CVX_UNCONVERGED */
   virtual DblVec getVarValues(const VarVector& vars) const = 0;
   virtual CvxOptStatus optimize() = 0;
 
   /**
    * @brief The duality gap of the most recent optimize(): unscaled, non-negative, and an upper bound on how far the
    * returned solution's objective lies above the QP optimum
-   * @details Backends that solve to their own optimality report 0. +infinity means no certificate.
+   * @details Backends that solve to their own optimality report 0. +infinity means no certificate. A gap after an
+   * optimize() that returned anything other than CVX_SOLVED certifies nothing.
    */
   virtual double getDualityGap() const { return 0.0; }
 

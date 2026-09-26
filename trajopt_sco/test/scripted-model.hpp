@@ -59,8 +59,9 @@ public:
   {
     ++solves;
     CvxOptStatus status = inner_->optimize();
-    values_ = (status == CVX_SOLVED) ? inner_->getVarValues(inner_->getVars()) :
-                                       DblVec(inner_->getVars().size(), std::numeric_limits<double>::quiet_NaN());
+    values_ = (status == CVX_SOLVED || status == CVX_UNCONVERGED) ?
+                  inner_->getVarValues(inner_->getVars()) :
+                  DblVec(inner_->getVars().size(), std::numeric_limits<double>::quiet_NaN());
     gap_ = inner_->getDualityGap();
     std::optional<ScriptedModelSolve> step = every_solve;
     if (!script.empty())
