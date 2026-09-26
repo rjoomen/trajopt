@@ -243,16 +243,33 @@ CvxOptStatus PIQPModel::optimize()
   if (status == piqp::Status::PIQP_SOLVED || status == piqp::Status::PIQP_MAX_ITER_REACHED)
     duality_gap_ = solver.result().info.duality_gap;
 
-  if (status == piqp::Status::PIQP_SOLVED)
-    return CVX_SOLVED;
-
-  TESSERACT_LOG_DEBUG("PIQP status: {}", piqp::status_to_string(status));
-  if (status == piqp::Status::PIQP_PRIMAL_INFEASIBLE || status == piqp::Status::PIQP_DUAL_INFEASIBLE)
-    return CVX_INFEASIBLE;
-  return CVX_FAILED;
+  const CvxOptStatus result = piqpStatusToCvxOptStatus(status);
+  if (result == CVX_UNCONVERGED)
+  {
+    TESSERACT_LOG_WARN("PIQP returned an unconverged solution: {}", piqp::status_to_string(status));
+  }
+  else if (result != CVX_SOLVED)
+  {
+    TESSERACT_LOG_DEBUG("PIQP status: {}", piqp::status_to_string(status));
+  }
+  return result;
 }
 
 double PIQPModel::getDualityGap() const { return duality_gap_; }
+
+CvxOptStatus piqpStatusToCvxOptStatus(piqp::Status status)
+{
+  switch (status)
+  {
+    case piqp::Status::PIQP_SOLVED:
+      return CVX_SOLVED;
+    case piqp::Status::PIQP_PRIMAL_INFEASIBLE:
+    case piqp::Status::PIQP_DUAL_INFEASIBLE:
+      return CVX_INFEASIBLE;
+    default:
+      return CVX_FAILED;
+  }
+}
 
 void PIQPModel::setObjective(const AffExpr& expr) { objective_.affexpr = expr; }
 void PIQPModel::setObjective(const QuadExpr& expr) { objective_ = expr; }

@@ -11,6 +11,15 @@ TRAJOPT_IGNORE_WARNINGS_POP
 
 using namespace sco;
 
+TEST(PIQPModel, StatusClassification)  // NOLINT
+{
+  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_SOLVED), CVX_SOLVED);
+  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_MAX_ITER_REACHED), CVX_FAILED);
+  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_PRIMAL_INFEASIBLE), CVX_INFEASIBLE);
+  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_DUAL_INFEASIBLE), CVX_INFEASIBLE);
+  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_NUMERICS), CVX_FAILED);
+}
+
 // min (x - 1)^2 + (y - 2)^2 + z^2  s.t.  x + y = 1,  y <= 0.25,  z in [0.5, 0.5]  =>  x = 0.75, y = 0.25, z = 0.5
 TEST(PIQPModel, EqualityInequalityAndPinnedVariable)  // NOLINT
 {

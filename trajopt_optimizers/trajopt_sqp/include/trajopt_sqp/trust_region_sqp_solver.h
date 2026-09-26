@@ -33,6 +33,7 @@
 #include <vector>
 
 #include <trajopt_sqp/fwd.h>
+#include <trajopt_sqp/qp_solver.h>
 #include <trajopt_sqp/types.h>
 
 namespace trajopt_sqp
@@ -134,7 +135,10 @@ protected:
   /** @brief Whether a step from an uncertified or failed solve was rejected in the current trust region loop */
   bool uncertified_rejection_{ false };
 
-  /** @brief The most recent solve's duality gap, with a NaN read as +infinity */
+  /** @brief The status of the most recent QP solve */
+  QPSolveStatus last_qp_status_{ QPSolveStatus::kFailed };
+
+  /** @brief The most recent solve's duality gap; +infinity for a NaN gap or an unconverged solve */
   double certifiedGap() const;
 };
 

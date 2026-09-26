@@ -29,6 +29,7 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <cmath>
 #include <limits>
 #include <OsqpEigen/OsqpEigen.h>
+#include <tesseract/common/logging.h>
 TRAJOPT_IGNORE_WARNINGS_POP
 
 namespace
@@ -104,7 +105,20 @@ bool OSQPEigenSolver::clear()
   return true;
 }
 
-bool OSQPEigenSolver::solve()
+QPSolveStatus OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status status)
+{
+  switch (status)
+  {
+    case OsqpEigen::Status::Solved:
+      return QPSolveStatus::kSolved;
+    case OsqpEigen::Status::SolvedInaccurate:
+      return QPSolveStatus::kUnconverged;
+    default:
+      return QPSolveStatus::kFailed;
+  }
+}
+
+QPSolveStatus OSQPEigenSolver::solve()
 {
   // In order to call initSolver, everything must have already been set, so we call it right before solving
   if (!solver_->isInitialized())  // NOLINT
@@ -113,7 +127,7 @@ bool OSQPEigenSolver::solve()
     {
       solver_status_ = QPSolverStatus::kFailed;
       duality_gap_ = std::numeric_limits<double>::infinity();
-      return false;
+      return QPSolveStatus::kFailed;
     }
 
     // Apply stored warm start if the setting is enabled
@@ -179,15 +193,16 @@ bool OSQPEigenSolver::solve()
   if (OSQP_COMPARE_DEBUG_MODE)
     std::cout << "OSQP Status Value: " << static_cast<int>(solver_->getStatus()) << '\n';
 
-  if ((solveExitFlag == OsqpEigen::ErrorExitFlag::NoError) &&
-      ((status == OsqpEigen::Status::Solved) || (status == OsqpEigen::Status::SolvedInaccurate)))
+  const QPSolveStatus result =
+      (solveExitFlag == OsqpEigen::ErrorExitFlag::NoError) ? toQPSolveStatus(status) : QPSolveStatus::kFailed;
+  if (result != QPSolveStatus::kFailed)
   {
+    if (result == QPSolveStatus::kUnconverged)
+      TESSERACT_LOG_WARN("OSQP returned an unconverged solution: {}", solver_->solver()->info->status);
     if (OSQP_COMPARE_DEBUG_MODE)
-    {
       std::cout << "OSQP Solution: " << solver_->getSolution().transpose().format(format) << '\n';
-    }
     solver_status_ = QPSolverStatus::kInitialized;
-    return true;
+    return result;
   }
 
   if (verbosity > 0)  // NOLINT
@@ -230,7 +245,7 @@ bool OSQPEigenSolver::solve()
   }
 
   solver_status_ = QPSolverStatus::kFailed;
-  return false;
+  return QPSolveStatus::kFailed;
 }
 
 Eigen::VectorXd OSQPEigenSolver::getSolution() { return solver_->getSolution(); }

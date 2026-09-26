@@ -91,7 +91,12 @@ bool PIQPSolver::clear()
   return true;
 }
 
-bool PIQPSolver::solve()
+QPSolveStatus PIQPSolver::toQPSolveStatus(piqp::Status status)
+{
+  return status == piqp::Status::PIQP_SOLVED ? QPSolveStatus::kSolved : QPSolveStatus::kFailed;
+}
+
+QPSolveStatus PIQPSolver::solve()
 {
   duality_gap_ = std::numeric_limits<double>::infinity();
   const double inf = PIQP_INF;
@@ -128,7 +133,7 @@ bool PIQPSolver::solve()
   {
     TESSERACT_LOG_DEBUG("PIQP not called: bound rows on one variable have disjoint ranges");
     solver_status_ = QPSolverStatus::kFailed;
-    return false;
+    return QPSolveStatus::kFailed;
   }
 
   const SparseMatrix eq_matrix = selectRows(constraint_matrix_, eq_rows);
@@ -147,10 +152,13 @@ bool PIQPSolver::solve()
   if (status == piqp::Status::PIQP_SOLVED || status == piqp::Status::PIQP_MAX_ITER_REACHED)
     duality_gap_ = solver_.result().info.duality_gap;
 
-  if (status == piqp::Status::PIQP_SOLVED)
+  const QPSolveStatus result = toQPSolveStatus(status);
+  if (result != QPSolveStatus::kFailed)
   {
+    if (result == QPSolveStatus::kUnconverged)
+      TESSERACT_LOG_WARN("PIQP returned an unconverged solution: {}", piqp::status_to_string(status));
     solver_status_ = QPSolverStatus::kInitialized;
-    return true;
+    return result;
   }
 
   // PIQP reports rejected settings, such as a KKT solver the sparse backend lacks, only on stderr
@@ -160,7 +168,7 @@ bool PIQPSolver::solve()
                         piqp::kkt_solver_to_string(solver_.settings().kkt_solver));
 
   solver_status_ = QPSolverStatus::kFailed;
-  return false;
+  return QPSolveStatus::kFailed;
 }
 
 Eigen::VectorXd PIQPSolver::getSolution() { return solver_.result().x; }

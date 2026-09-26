@@ -125,6 +125,7 @@ void SQPResults::print() const
   std::cout << "overall_iteration: " << overall_iteration << '\n';
   std::cout << "exit_reason: " << toString(exit_reason) << '\n';
   std::cout << "n_suppressed_exits: " << n_suppressed_exits << '\n';
+  std::cout << "n_unconverged_qp_solves: " << n_unconverged_qp_solves << '\n';
   std::cout << "tiny_trust_region_after_uncertified: " << tiny_trust_region_after_uncertified << '\n';
 }
 

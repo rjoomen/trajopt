@@ -296,7 +296,7 @@ DblVec OptProb::getClosestFeasiblePointQP(const DblVec& x)
   model_->setVarBounds(vars_, lower_bounds_, upper_bounds_);
   model_->setObjective(obj);
   const CvxOptStatus status = model_->optimize();
-  if (status != CVX_SOLVED)
+  if (status != CVX_SOLVED && status != CVX_UNCONVERGED)
   {
     model_->writeToFile("/tmp/fail.lp");
     PRINT_AND_THROW("couldn't find a feasible point. there's probably a "

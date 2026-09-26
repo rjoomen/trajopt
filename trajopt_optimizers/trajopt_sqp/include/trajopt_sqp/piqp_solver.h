@@ -60,7 +60,10 @@ public:
 
   bool clear() override;
 
-  bool solve() override;
+  QPSolveStatus solve() override;
+
+  /** @brief Classify a PIQP status */
+  static QPSolveStatus toQPSolveStatus(piqp::Status status);
 
   Eigen::VectorXd getSolution() override;
 

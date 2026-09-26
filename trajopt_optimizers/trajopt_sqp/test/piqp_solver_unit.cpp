@@ -52,7 +52,7 @@ trajopt_ifopt::Jacobian makeMatrix(Eigen::Index rows,
 
 /**
  * @brief Minimize x'x + g'x subject to l <= A x <= u
- * @return Whether the solve succeeded; the solution is written to x
+ * @return Whether the solve converged; the solution is written to x
  */
 bool solveQP(PIQPSolver& solver,
              const Eigen::VectorXd& g,
@@ -71,11 +71,20 @@ bool solveQP(PIQPSolver& solver,
   solver.updateGradient(g);
   solver.updateLinearConstraintsMatrix(A);
   solver.updateBounds(l, u);
-  const bool solved = solver.solve();
+  const bool solved = solver.solve() == trajopt_sqp::QPSolveStatus::kSolved;
   x = solver.getSolution();
   return solved;
 }
 }  // namespace
+
+TEST(PIQPSolverUnit, StatusClassification)  // NOLINT
+{
+  using trajopt_sqp::QPSolveStatus;
+  EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_SOLVED), QPSolveStatus::kSolved);
+  EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_MAX_ITER_REACHED), QPSolveStatus::kFailed);
+  EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_PRIMAL_INFEASIBLE), QPSolveStatus::kFailed);
+  EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_NUMERICS), QPSolveStatus::kFailed);
+}
 
 TEST(PIQPSolverUnit, EqualityRow)  // NOLINT
 {
@@ -166,7 +175,7 @@ TEST(PIQPSolverUnit, ResolveAfterBoundsChange)  // NOLINT
 
   // Loosen the bound row and turn the second row into an equality
   solver.updateBounds(Eigen::Vector2d(-kInf, 2.5), Eigen::Vector2d(1.5, 2.5));
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   EXPECT_TRUE(solver.getSolution().isApprox(Eigen::Vector2d(1.25, 1.25), kTol));
 }
 
@@ -180,7 +189,7 @@ TEST(PIQPSolverUnit, InfeasibleProblemFails)  // NOLINT
 
   // A later successful solve clears the failure
   solver.updateBounds(Eigen::Vector2d(-kInf, -kInf), Eigen::Vector2d(kInf, 1.0));
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   EXPECT_EQ(solver.getSolverStatus(), QPSolverStatus::kInitialized);
 }
 
@@ -218,7 +227,7 @@ TEST(PIQPSolverUnit, DualityGapReportedWithGapCheckOff)  // NOLINT
   PIQPSolver solver;
   solver.settings.check_duality_gap = false;
   setupOneSidedProblem(solver);
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   EXPECT_DOUBLE_EQ(solver.getDualityGap(), solver.solver().result().info.duality_gap);
   EXPECT_TRUE(std::isfinite(solver.getDualityGap()));
 }
@@ -238,7 +247,7 @@ TEST(PIQPSolverUnit, DualityGapInfiniteAfterFailure)  // NOLINT
   solver.updateGradient(Eigen::VectorXd::Zero(1));
   solver.updateLinearConstraintsMatrix(A);
   solver.updateBounds(Eigen::Vector2d(1.0, -inf), Eigen::Vector2d(inf, 0.0));
-  EXPECT_FALSE(solver.solve());
+  EXPECT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kFailed);
   EXPECT_EQ(solver.getDualityGap(), inf);
 }
 
@@ -258,7 +267,7 @@ TEST(PIQPSolverUnit, DualityGapInfiniteAfterClear)  // NOLINT
 {
   PIQPSolver solver;
   setupOneSidedProblem(solver);
-  ASSERT_TRUE(solver.solve());
+  ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   ASSERT_TRUE(std::isfinite(solver.getDualityGap()));
 
   ASSERT_TRUE(solver.clear());

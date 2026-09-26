@@ -25,6 +25,16 @@ Var setupOneSidedProblem(Model& model)
 }
 }  // namespace
 
+TEST(OSQPModel, StatusClassification)  // NOLINT
+{
+  EXPECT_EQ(osqpStatusToCvxOptStatus(OSQP_SOLVED), CVX_SOLVED);
+  EXPECT_EQ(osqpStatusToCvxOptStatus(OSQP_SOLVED_INACCURATE), CVX_UNCONVERGED);
+  EXPECT_EQ(osqpStatusToCvxOptStatus(OSQP_MAX_ITER_REACHED), CVX_FAILED);
+  EXPECT_EQ(osqpStatusToCvxOptStatus(OSQP_PRIMAL_INFEASIBLE), CVX_INFEASIBLE);
+  EXPECT_EQ(osqpStatusToCvxOptStatus(OSQP_DUAL_INFEASIBLE_INACCURATE), CVX_INFEASIBLE);
+  EXPECT_EQ(osqpStatusToCvxOptStatus(OSQP_TIME_LIMIT_REACHED), CVX_FAILED);
+}
+
 TEST(OSQPModel, DualityGapSmallAtSolution)  // NOLINT
 {
   const Model::Ptr model = createModel(ModelType::OSQP);

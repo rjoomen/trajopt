@@ -27,6 +27,7 @@
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <limits>
+#include <OsqpEigen/Constants.hpp>
 #include <OsqpEigen/Settings.hpp>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -63,7 +64,10 @@ public:
 
   bool clear() override;
 
-  bool solve() override;
+  QPSolveStatus solve() override;
+
+  /** @brief Classify an OSQP status; an inaccurate solve is unconverged */
+  static QPSolveStatus toQPSolveStatus(OsqpEigen::Status status);
 
   Eigen::VectorXd getSolution() override;
 

@@ -275,6 +275,20 @@ TEST_F(ScoTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
   EXPECT_TRUE(run(1.0));
 }
 
+TEST_F(ScoTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ CVX_UNCONVERGED, nullptr, std::nullopt };
+  const OptResults r = runScripted(model);
+  EXPECT_EQ(r.n_unconverged_qp_solves, model->solves);
+  EXPECT_NE(r.exit_reason, EXIT_SMALL_IMPROVEMENT);
+  // Neither small-improvement exit is taken; the solve ends on the tiny box, flagged
+  EXPECT_EQ(r.exit_reason, EXIT_TINY_TRUST_REGION);
+  EXPECT_TRUE(r.tiny_trust_region_after_uncertified);
+  EXPECT_GT(r.n_suppressed_exits, 0);
+  EXPECT_NEAR(r.x[0], 0.8, 1e-3);
+}
+
 TEST_F(ScoTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
 {
   auto model = scriptedOsqp();

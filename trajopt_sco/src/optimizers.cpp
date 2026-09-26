@@ -88,6 +88,7 @@ std::ostream& operator<<(std::ostream& o, const OptResults& r)
     << "n qp solves: " << r.n_qp_solves << '\n'
     << "exit reason: " << toString(r.exit_reason) << '\n'
     << "n suppressed exits: " << r.n_suppressed_exits << '\n'
+    << "n unconverged qp solves: " << r.n_unconverged_qp_solves << '\n'
     << "tiny trust region after uncertified: " << r.tiny_trust_region_after_uncertified << '\n';
   return o;
 }
@@ -852,7 +853,7 @@ OptStatus BasicTrustRegionSQP::optimize()
 
         ++results_.n_qp_solves;
         DblVec model_var_vals;
-        bool solved = (status == CVX_SOLVED);
+        bool solved = (status == CVX_SOLVED || status == CVX_UNCONVERGED);
         if (solved)
         {
           model_var_vals = model_->getVarValues(model_->getVars());
@@ -863,6 +864,8 @@ OptStatus BasicTrustRegionSQP::optimize()
             solved = false;
           }
         }
+        if (solved && status == CVX_UNCONVERGED)
+          ++results_.n_unconverged_qp_solves;
         if (!solved)
         {
           TESSERACT_LOG_WARN("Convex solver failed. Enable debug logging to see solver output. Saving model to "
@@ -933,8 +936,9 @@ OptStatus BasicTrustRegionSQP::optimize()
           continue;
         }
 
-        // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small
-        double gap = model_->getDualityGap();
+        // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small.
+        // An unconverged solve certifies nothing
+        double gap = (status == CVX_UNCONVERGED) ? std::numeric_limits<double>::infinity() : model_->getDualityGap();
         if (std::isnan(gap))
           gap = std::numeric_limits<double>::infinity();
         const bool uncertified = !(gap < param_.min_approx_improve);

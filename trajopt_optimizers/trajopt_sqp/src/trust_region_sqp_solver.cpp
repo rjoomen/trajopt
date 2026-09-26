@@ -192,6 +192,8 @@ bool TrustRegionSQPSolver::bestIsFeasible() const
 
 double TrustRegionSQPSolver::certifiedGap() const
 {
+  if (last_qp_status_ != QPSolveStatus::kSolved)
+    return std::numeric_limits<double>::infinity();
   const double gap = qp_solver->getDualityGap();
   return std::isnan(gap) ? std::numeric_limits<double>::infinity() : gap;
 }
@@ -438,9 +440,10 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
 SQPStatus TrustRegionSQPSolver::solveQPProblem()
 {
   // Solve the QP
-  bool succeed = qp_solver->solve();
+  last_qp_status_ = qp_solver->solve();
 
-  if (succeed)
+  bool callbacks_ok = true;
+  if (last_qp_status_ != QPSolveStatus::kFailed)
   {
     results_.new_var_vals = qp_solver->getSolution();
 
@@ -451,6 +454,9 @@ SQPStatus TrustRegionSQPSolver::solveQPProblem()
       qp_problem->setVariables(results_.best_var_vals.data());
       return SQPStatus::kQPSolveFailed;
     }
+
+    if (last_qp_status_ == QPSolveStatus::kUnconverged)
+      ++results_.n_unconverged_qp_solves;
 
     // Calculate approximate QP merits (cheap)
     qp_problem->setVariables(results_.new_var_vals.data());
@@ -492,7 +498,7 @@ SQPStatus TrustRegionSQPSolver::solveQPProblem()
       printStepInfo();
 
     // Call callbacks
-    succeed &= callCallbacks();
+    callbacks_ok = callCallbacks();
   }
   else
   {
@@ -503,7 +509,7 @@ SQPStatus TrustRegionSQPSolver::solveQPProblem()
   }
 
   // Check if any callbacks returned false
-  if (!succeed)
+  if (!callbacks_ok)
   {
     return SQPStatus::kStoppedByCallback;
   }
