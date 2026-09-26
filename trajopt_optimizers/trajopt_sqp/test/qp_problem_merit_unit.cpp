@@ -109,6 +109,37 @@ private:
   Eigen::VectorXd coeffs_;
 };
 
+/** @brief Constraint set with one row, the sum of its variable block, so the row couples every variable in it. */
+class SumTestSet : public trajopt_ifopt::ConstraintSet
+{
+public:
+  SumTestSet(std::shared_ptr<const trajopt_ifopt::Var> var, std::string name, trajopt_ifopt::Bounds bound)
+    : ConstraintSet(std::move(name), 1), var_(std::move(var)), bound_(bound)
+  {
+    non_zeros_ = var_->size();
+  }
+
+  int update() override { return rows_; }
+  Eigen::VectorXd getValues() const override { return Eigen::VectorXd::Constant(1, var_->value().sum()); }
+  Eigen::VectorXd getCoefficients() const override { return Eigen::VectorXd::Ones(1); }
+  std::vector<trajopt_ifopt::Bounds> getBounds() const override { return { bound_ }; }
+
+  trajopt_ifopt::Jacobian getJacobian() const override
+  {
+    trajopt_ifopt::Jacobian jac(1, variables_->getRows());
+    jac.reserve(var_->size());
+    jac.startVec(0);
+    for (Eigen::Index j = 0; j < var_->size(); ++j)
+      jac.insertBack(0, var_->getIndex() + j) = 1.0;
+    jac.finalize();
+    return jac;
+  }
+
+private:
+  std::shared_ptr<const trajopt_ifopt::Var> var_;
+  trajopt_ifopt::Bounds bound_;
+};
+
 /** @brief Dynamic constraint set that currently has no rows, as a collision set out of contact does. */
 class EmptyTestSet : public trajopt_ifopt::ConstraintSet
 {
@@ -134,8 +165,9 @@ struct TestVariables
   std::vector<std::shared_ptr<const trajopt_ifopt::Var>> vars;
 };
 
-/** @brief One node, holding one unbounded variable block, per entry of @p starts. */
-TestVariables makeVariables(const std::vector<Eigen::VectorXd>& starts)
+/** @brief One node, holding one variable block with every entry limited to @p bound, per entry of @p starts. */
+TestVariables makeVariables(const std::vector<Eigen::VectorXd>& starts,
+                            trajopt_ifopt::Bounds bound = trajopt_ifopt::NoBound)
 {
   TestVariables t;
   std::vector<std::unique_ptr<trajopt_ifopt::Node>> nodes;
@@ -143,10 +175,8 @@ TestVariables makeVariables(const std::vector<Eigen::VectorXd>& starts)
   {
     auto node = std::make_unique<trajopt_ifopt::Node>("node" + std::to_string(k));
     const auto n = static_cast<std::size_t>(starts[k].size());
-    t.vars.push_back(node->addVar("position",
-                                  std::vector<std::string>(n, "j"),
-                                  starts[k],
-                                  std::vector<trajopt_ifopt::Bounds>(n, trajopt_ifopt::NoBound)));
+    t.vars.push_back(node->addVar(
+        "position", std::vector<std::string>(n, "j"), starts[k], std::vector<trajopt_ifopt::Bounds>(n, bound)));
     nodes.push_back(std::move(node));
   }
   t.variables = std::make_shared<trajopt_ifopt::NodesVariables>("trajectory", std::move(nodes));
@@ -170,6 +200,56 @@ void expectVectorNear(const Eigen::Ref<const Eigen::VectorXd>& actual,
   ASSERT_EQ(actual.size(), expected.size());
   for (Eigen::Index i = 0; i < actual.size(); ++i)
     EXPECT_NEAR(actual(i), expected(i), tol) << "at index " << i;
+}
+
+/**
+ * @brief Expect the only hard QP rows to be the variable bounds
+ * @details The last getNumQPVars() rows must be the identity bound block, one row per QP variable. Every row before
+ * it must carry a slack column, so the solver can always satisfy it by paying for the slack.
+ */
+template <typename Problem>
+void expectOnlyBoundRowsAreHard(Problem& qp)
+{
+  qp.convexify();
+  const trajopt_ifopt::Jacobian& A = qp.getConstraintMatrix();
+  const Eigen::Index n_nlp = qp.getNumNLPVars();
+  const Eigen::Index bound_start = A.rows() - qp.getNumQPVars();
+  ASSERT_GT(bound_start, 0) << "the fixture must produce rows other than the bounds";
+  for (Eigen::Index row = 0; row < A.rows(); ++row)
+  {
+    bool has_slack = false;
+    std::vector<Eigen::Index> cols;
+    for (trajopt_ifopt::Jacobian::InnerIterator it(A, row); it; ++it)
+    {
+      if (it.value() == 0.0)
+        continue;
+      cols.push_back(it.col());
+      has_slack |= (it.col() >= n_nlp);
+    }
+    if (row < bound_start)
+    {
+      EXPECT_TRUE(has_slack) << "row " << row << " is hard but is not a variable bound";
+    }
+    else
+    {
+      ASSERT_EQ(cols.size(), 1) << "bound row " << row;
+      EXPECT_EQ(cols[0], row - bound_start) << "bound row " << row;
+    }
+  }
+}
+
+/** @brief Expect the QP's bounds on the NLP variables to be their limits intersected with the trust box */
+template <typename Problem>
+void expectNLPVariableBoundsFollowTheBox(Problem& qp)
+{
+  qp.setBoxSize(Eigen::VectorXd::Constant(1, 0.5));
+  expectVectorNear(qp.getNLPVariableBoundsLower(), toVectorXd({ 0.4 }));
+  expectVectorNear(qp.getNLPVariableBoundsUpper(), toVectorXd({ 1.0 }));
+
+  double scale = 0.1;
+  qp.scaleBoxSize(scale);
+  expectVectorNear(qp.getNLPVariableBoundsLower(), toVectorXd({ 0.85 }));
+  expectVectorNear(qp.getNLPVariableBoundsUpper(), toVectorXd({ 0.95 }));
 }
 }  // namespace
 
@@ -448,4 +528,61 @@ TEST(QPProblemMerit, SeedMeritWeightsConstraintViolations)  // NOLINT
   expectVectorNear(results.best_constraint_violations.weighted, toVectorXd({ 5.1 }));
   // Hinge cost 2*0.5 + 3*0.8 = 3.4, plus the initial merit coefficient times the weighted violation.
   EXPECT_NEAR(results.best_exact_merit, 3.4 + (solver.params.initial_merit_error_coeff * 5.1), 1e-12);
+}
+
+// Joint limits and the trust box are the only hard rows: every other row carries a slack, including rows that
+// couple several variables.
+TEST(QPProblemMerit, TrajOptOnlyBoundRowsAreHard)  // NOLINT
+{
+  const TestVariables t = makeVariables({ toVectorXd({ 0.5, -0.3 }), toVectorXd({ 0.4, 0.6 }) });
+  auto qp = std::make_shared<trajopt_sqp::TrajOptQPProblem>(t.variables);
+  qp->addConstraintSet(std::make_shared<LinearTestSet>(
+      t.vars[0], "equality", trajopt_ifopt::Bounds(0.0, 0.0), constantWeights(toVectorXd({ 2.0, 3.0 }))));
+  qp->addConstraintSet(std::make_shared<SumTestSet>(t.vars[1], "sum_inequality", trajopt_ifopt::BoundSmallerZero));
+  qp->addCostSet(std::make_shared<LinearTestSet>(
+                     t.vars[1], "hinge", trajopt_ifopt::BoundSmallerZero, constantWeights(toVectorXd({ 2.0, 3.0 }))),
+                 trajopt_sqp::CostPenaltyType::kHinge);
+  qp->addCostSet(std::make_shared<SumTestSet>(t.vars[0], "sum_hinge", trajopt_ifopt::BoundSmallerZero),
+                 trajopt_sqp::CostPenaltyType::kHinge);
+  qp->setup();
+  expectOnlyBoundRowsAreHard(*qp);
+}
+
+// IfoptQPProblem takes no hinge costs; its squared cost lives in the objective, not in a row.
+TEST(QPProblemMerit, IfoptOnlyBoundRowsAreHard)  // NOLINT
+{
+  const TestVariables t = makeVariables({ toVectorXd({ 0.5, -0.3 }), toVectorXd({ 0.4, 0.6 }) });
+  auto qp = std::make_shared<trajopt_sqp::IfoptQPProblem>(t.variables);
+  qp->addConstraintSet(std::make_shared<LinearTestSet>(
+      t.vars[0], "equality", trajopt_ifopt::Bounds(0.0, 0.0), constantWeights(toVectorXd({ 2.0, 3.0 }))));
+  qp->addConstraintSet(std::make_shared<SumTestSet>(t.vars[1], "sum_inequality", trajopt_ifopt::BoundSmallerZero));
+  qp->addCostSet(std::make_shared<LinearTestSet>(
+                     t.vars[1], "squared", trajopt_ifopt::Bounds(0.0, 0.0), constantWeights(toVectorXd({ 1.0, 1.0 }))),
+                 trajopt_sqp::CostPenaltyType::kSquared);
+  qp->setup();
+  expectOnlyBoundRowsAreHard(*qp);
+}
+
+TEST(QPProblemMerit, TrajOptNLPVariableBoundsFollowTheBox)  // NOLINT
+{
+  const TestVariables t = makeVariables({ toVectorXd({ 0.9 }) }, trajopt_ifopt::Bounds(-1.0, 1.0));
+  auto qp = std::make_shared<trajopt_sqp::TrajOptQPProblem>(t.variables);
+  qp->addCostSet(std::make_shared<LinearTestSet>(
+                     t.vars[0], "hinge", trajopt_ifopt::BoundSmallerZero, constantWeights(toVectorXd({ 1.0 }))),
+                 trajopt_sqp::CostPenaltyType::kHinge);
+  qp->setup();
+  qp->convexify();
+  expectNLPVariableBoundsFollowTheBox(*qp);
+}
+
+TEST(QPProblemMerit, IfoptNLPVariableBoundsFollowTheBox)  // NOLINT
+{
+  const TestVariables t = makeVariables({ toVectorXd({ 0.9 }) }, trajopt_ifopt::Bounds(-1.0, 1.0));
+  auto qp = std::make_shared<trajopt_sqp::IfoptQPProblem>(t.variables);
+  qp->addCostSet(std::make_shared<LinearTestSet>(
+                     t.vars[0], "squared", trajopt_ifopt::Bounds(0.0, 0.0), constantWeights(toVectorXd({ 1.0 }))),
+                 trajopt_sqp::CostPenaltyType::kSquared);
+  qp->setup();
+  qp->convexify();
+  expectNLPVariableBoundsFollowTheBox(*qp);
 }

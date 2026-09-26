@@ -231,6 +231,15 @@ protected:
   void adjustTrustRegion(double ratio);
   void setTrustRegionSize(double trust_box_size);
   void setTrustBoxConstraints(const DblVec& x);
+  /** @brief The trust box around x, clamped to the variable bounds, as imposed on the convex subproblem */
+  void trustBoxBounds(const DblVec& x, DblVec& lower, DblVec& upper) const;
+  /**
+   * @brief Hold an unconverged solution to what the convex subproblem imposes as hard constraints
+   * @details Clamps the problem variables to the trust box and bounds, and sets each variable fixed by a
+   * single-variable linear equality to its value. Other linear rows cannot be projected cheaply.
+   * @return false when another linear row is violated by more than cnt_tolerance
+   */
+  bool holdToHardConstraints(DblVec& model_var_vals) const;
 
   Model::Ptr model_;
   BasicTrustRegionSQPParameters param_;

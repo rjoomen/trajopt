@@ -9,6 +9,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <limits>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include <trajopt_ifopt/constraints/joint_position_constraint.h>
 #include <trajopt_ifopt/core/eigen_types.h>
@@ -30,14 +31,15 @@ namespace
 /**
  * @brief Two variables in [-1, 1] pulled toward (0.8, -0.3) by a squared cost, optionally constrained to x0 = target
  * @param constraint_target When set, adds the hard constraint x0 = constraint_target (outside [-1, 1] is infeasible)
+ * @param start The start point
  */
-std::shared_ptr<trajopt_sqp::TrajOptQPProblem> makeProblem(std::optional<double> constraint_target = std::nullopt)
+std::shared_ptr<trajopt_sqp::TrajOptQPProblem> makeProblem(std::optional<double> constraint_target = std::nullopt,
+                                                           const Eigen::Vector2d& start = Eigen::Vector2d::Zero())
 {
   auto node = std::make_unique<trajopt_ifopt::Node>("Joints");
   const std::vector<std::string> names{ "j0", "j1" };
   const std::vector<trajopt_ifopt::Bounds> bounds(2, trajopt_ifopt::Bounds(-1.0, 1.0));
-  const std::shared_ptr<const trajopt_ifopt::Var> var =
-      node->addVar("position", names, Eigen::Vector2d::Zero(), bounds);
+  const std::shared_ptr<const trajopt_ifopt::Var> var = node->addVar("position", names, start, bounds);
   std::vector<std::unique_ptr<trajopt_ifopt::Node>> nodes;
   nodes.push_back(std::move(node));
   auto variables = std::make_shared<trajopt_ifopt::NodesVariables>("trajectory", std::move(nodes));
@@ -438,6 +440,55 @@ TEST_F(SQPTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
   solver.solve(makeProblem());
   EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
   EXPECT_TRUE(solver.getResults().tiny_trust_region_after_uncertified);
+}
+
+namespace
+{
+/** @brief Records the first entry of every proposal the solver evaluates */
+struct ProposalRecorder : trajopt_sqp::SQPCallback
+{
+  bool execute(const trajopt_sqp::QPProblem& /*problem*/, const trajopt_sqp::SQPResults& results) override
+  {
+    first.push_back(results.new_var_vals[0]);
+    return true;
+  }
+  std::vector<double> first;
+};
+}  // namespace
+
+TEST_F(SQPTermination, UnconvergedSolutionIsClampedToLimitsAndBox)  // NOLINT
+{
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  scripted->script.push_back(
+      { trajopt_sqp::QPSolveStatus::kUnconverged, [](Eigen::VectorXd& x) { x[0] = 5.0; }, std::nullopt });
+  auto solver = makeSolver(scripted);
+  auto recorder = std::make_shared<ProposalRecorder>();
+  solver.registerCallback(recorder);
+  solver.solve(makeProblem());
+  ASSERT_FALSE(recorder->first.empty());
+  // Start at 0 with box 0.1: the first proposal is held to [-0.1, 0.1]
+  EXPECT_NEAR(recorder->first.front(), 0.1, 1e-12);
+  for (const double x0 : recorder->first)
+    EXPECT_LE(x0, 1.0);
+  EXPECT_LE(solver.getResults().best_var_vals[0], 1.0);
+}
+
+TEST_F(SQPTermination, UnconvergedSolutionIsClampedToALimitTighterThanTheBox)  // NOLINT
+{
+  // Start at 0.95 with box 0.1: the box reaches 1.05, the limit only 1.0; the edit lies between them
+  auto scripted =
+      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  scripted->script.push_back(
+      { trajopt_sqp::QPSolveStatus::kUnconverged, [](Eigen::VectorXd& x) { x[0] = 1.04; }, std::nullopt });
+  auto solver = makeSolver(scripted);
+  auto recorder = std::make_shared<ProposalRecorder>();
+  solver.registerCallback(recorder);
+  solver.solve(makeProblem(std::nullopt, Eigen::Vector2d(0.95, 0.0)));
+  ASSERT_FALSE(recorder->first.empty());
+  EXPECT_EQ(recorder->first.front(), 1.0);
+  for (const double x0 : recorder->first)
+    EXPECT_LE(x0, 1.0);
 }
 
 int main(int argc, char** argv)

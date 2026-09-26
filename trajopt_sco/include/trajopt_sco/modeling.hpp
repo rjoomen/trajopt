@@ -260,6 +260,10 @@ public:
   const std::vector<Cost::Ptr>& getCosts() { return costs_; }
   const std::vector<Constraint::Ptr>& getIneqConstraints() { return ineqcnts_; }
   const std::vector<Constraint::Ptr>& getEqConstraints() { return eqcnts_; }
+  /** @brief Rows added by addLinearConstraint as equalities; the convex solver imposes them as hard constraints */
+  const AffExprVector& getLinearEqConstraints() const { return linear_eq_cnts_; }
+  /** @brief Rows added by addLinearConstraint as inequalities; the convex solver imposes them as hard constraints */
+  const AffExprVector& getLinearIneqConstraints() const { return linear_ineq_cnts_; }
   const DblVec& getLowerBounds() { return lower_bounds_; }
   const DblVec& getUpperBounds() { return upper_bounds_; }
   Model::Ptr getModel() { return model_; }
@@ -276,6 +280,8 @@ protected:
   std::vector<Cost::Ptr> costs_;
   std::vector<Constraint::Ptr> eqcnts_;
   std::vector<Constraint::Ptr> ineqcnts_;
+  AffExprVector linear_eq_cnts_;
+  AffExprVector linear_ineq_cnts_;
 };
 
 template <typename VecType>

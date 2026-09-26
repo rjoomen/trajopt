@@ -256,9 +256,15 @@ std::vector<Constraint::Ptr> OptProb::getConstraints() const
 void OptProb::addLinearConstraint(const AffExpr& expr, ConstraintType type)
 {
   if (type == EQ)
+  {
     model_->addEqCnt(expr, "");
+    linear_eq_cnts_.push_back(expr);
+  }
   else
+  {
     model_->addIneqCnt(expr, "");
+    linear_ineq_cnts_.push_back(expr);
+  }
 }
 
 DblVec OptProb::getCentralFeasiblePoint(const DblVec& x)

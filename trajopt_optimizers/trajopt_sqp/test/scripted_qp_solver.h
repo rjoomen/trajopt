@@ -185,6 +185,8 @@ public:
   const trajopt_ifopt::Jacobian& getConstraintMatrix() const override { return inner_->getConstraintMatrix(); }
   const Eigen::VectorXd& getBoundsLower() const override { return inner_->getBoundsLower(); }
   const Eigen::VectorXd& getBoundsUpper() const override { return inner_->getBoundsUpper(); }
+  Eigen::VectorXd getNLPVariableBoundsLower() const override { return inner_->getNLPVariableBoundsLower(); }
+  Eigen::VectorXd getNLPVariableBoundsUpper() const override { return inner_->getNLPVariableBoundsUpper(); }
 
 private:
   std::shared_ptr<QPProblem> inner_;
