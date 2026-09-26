@@ -456,7 +456,15 @@ SQPStatus TrustRegionSQPSolver::solveQPProblem()
     }
 
     if (last_qp_status_ == QPSolveStatus::kUnconverged)
+    {
       ++results_.n_unconverged_qp_solves;
+
+      // Joint limits and the trust box exist only as QP bounds; hold an unconverged solution to them
+      const Eigen::Index n = qp_problem->getNumNLPVars();
+      results_.new_var_vals.head(n) = results_.new_var_vals.head(n)
+                                          .cwiseMax(qp_problem->getNLPVariableBoundsLower())
+                                          .cwiseMin(qp_problem->getNLPVariableBoundsUpper());
+    }
 
     // Calculate approximate QP merits (cheap)
     qp_problem->setVariables(results_.new_var_vals.data());

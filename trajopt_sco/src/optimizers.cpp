@@ -200,10 +200,18 @@ void BasicTrustRegionSQP::setTrustBoxConstraints(const DblVec& x)
 {
   const VarVector& vars = prob_->getVars();
   assert(vars.size() == x.size());
+  DblVec lbtrust;
+  DblVec ubtrust;
+  trustBoxBounds(x, lbtrust, ubtrust);
+  model_->setVarBounds(vars, lbtrust, ubtrust);
+}
+
+void BasicTrustRegionSQP::trustBoxBounds(const DblVec& x, DblVec& lower, DblVec& upper) const
+{
   const DblVec& lb = prob_->getLowerBounds();
   const DblVec& ub = prob_->getUpperBounds();
-  DblVec lbtrust(x.size());
-  DblVec ubtrust(x.size());
+  lower.resize(x.size());
+  upper.resize(x.size());
   // Calculate box constraints, clamped to variable bounds. The iterate is first clamped into
   // [lb, ub] so the box stays non-empty when x has drifted outside its bounds (failed step, bad
   // warm-start); for x inside [lb, ub] this is a no-op and the box is the standard strict-shrink
@@ -211,10 +219,32 @@ void BasicTrustRegionSQP::setTrustBoxConstraints(const DblVec& x)
   for (std::size_t i = 0; i < x.size(); ++i)
   {
     const double xi = std::clamp(x[i], lb[i], ub[i]);
-    lbtrust[i] = std::max(xi - param_.trust_box_size, lb[i]);
-    ubtrust[i] = std::min(xi + param_.trust_box_size, ub[i]);
+    lower[i] = std::max(xi - param_.trust_box_size, lb[i]);
+    upper[i] = std::min(xi + param_.trust_box_size, ub[i]);
   }
-  model_->setVarBounds(vars, lbtrust, ubtrust);
+}
+
+bool BasicTrustRegionSQP::holdToHardConstraints(DblVec& model_var_vals) const
+{
+  DblVec lower;
+  DblVec upper;
+  trustBoxBounds(results_.x, lower, upper);
+  for (std::size_t i = 0; i < lower.size(); ++i)
+    model_var_vals[i] = std::clamp(model_var_vals[i], lower[i], upper[i]);
+
+  // Project every single-variable equality first, so the general rows are judged at the projected point
+  const auto is_single = [](const AffExpr& row) { return row.vars.size() == 1 && row.coeffs[0] != 0.0; };
+  for (const AffExpr& row : prob_->getLinearEqConstraints())
+    if (is_single(row))
+      model_var_vals[row.vars[0].var_rep->index] = -row.constant / row.coeffs[0];
+
+  double worst = 0;
+  for (const AffExpr& row : prob_->getLinearEqConstraints())
+    if (!is_single(row))
+      worst = std::max(worst, std::fabs(row.value(model_var_vals)));
+  for (const AffExpr& row : prob_->getLinearIneqConstraints())
+    worst = std::max(worst, pospart(row.value(model_var_vals)));
+  return worst <= param_.cnt_tolerance;
 }
 
 //////////////////////////////////////////////////
@@ -865,7 +895,18 @@ OptStatus BasicTrustRegionSQP::optimize()
           }
         }
         if (solved && status == CVX_UNCONVERGED)
+        {
           ++results_.n_unconverged_qp_solves;
+          if (!holdToHardConstraints(model_var_vals))
+          {
+            TESSERACT_LOG_WARN("unconverged QP solution violates a hard linear constraint beyond cnt_tolerance; "
+                               "rejecting the "
+                               "step");
+            uncertified_rejection = true;
+            adjustTrustRegion(param_.trust_shrink_ratio);
+            continue;
+          }
+        }
         if (!solved)
         {
           TESSERACT_LOG_WARN("Convex solver failed. Enable debug logging to see solver output. Saving model to "

@@ -9,6 +9,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <limits>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include <trajopt_sco/expr_op_overloads.hpp>
 #include <trajopt_sco/expr_ops.hpp>
@@ -287,6 +288,79 @@ TEST_F(ScoTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT
   EXPECT_TRUE(r.tiny_trust_region_after_uncertified);
   EXPECT_GT(r.n_suppressed_exits, 0);
   EXPECT_NEAR(r.x[0], 0.8, 1e-3);
+}
+
+TEST_F(ScoTermination, UnconvergedSolutionIsClampedToBoundsAndBox)  // NOLINT
+{
+  // The edited proposal lies above the bound yet improves the merit, so only the clamp keeps it out
+  auto model = scriptedOsqp();
+  model->script.push_back({ CVX_UNCONVERGED, [](DblVec& x) { x[0] = 1.05; }, std::nullopt });
+  BasicTrustRegionSQP solver(makeScriptedProblem(model, &targetCost));
+  std::vector<DblVec> seen;
+  solver.addCallback([&seen](OptProb*, OptResults& r) { seen.push_back(r.x); });
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  // Start at 0 with box 0.1: the first accepted step is held to [-0.1, 0.1]
+  ASSERT_GE(seen.size(), 2);
+  EXPECT_NEAR(seen[1][0], 0.1, 1e-9);
+  for (const DblVec& x : seen)
+    EXPECT_LE(x[0], 1.0);
+  EXPECT_LE(solver.x()[0], 1.0);
+}
+
+namespace
+{
+/** @brief Pulled toward (1.5, -0.3), beyond the upper bound of x0 */
+double beyondBoundCost(const Eigen::VectorXd& x) { return sq(x(0) - 1.5) + sq(x(1) + 0.3); }
+}  // namespace
+
+TEST_F(ScoTermination, UnconvergedSolutionIsClampedToABoundTighterThanTheBox)  // NOLINT
+{
+  // Start at 0.95 with box 0.1: the box reaches 1.05, the bound only 1.0; the edit lies between them and improves the
+  // merit, so only the clamp keeps it out
+  auto model = scriptedOsqp();
+  model->script.push_back({ CVX_UNCONVERGED, [](DblVec& x) { x[0] = 1.04; }, std::nullopt });
+  BasicTrustRegionSQP solver(makeScriptedProblem(model, &beyondBoundCost));
+  std::vector<DblVec> seen;
+  solver.addCallback([&seen](OptProb*, OptResults& r) { seen.push_back(r.x); });
+  solver.initialize({ 0.95, 0.0 });
+  solver.optimize();
+  ASSERT_GE(seen.size(), 2);
+  EXPECT_EQ(seen[1][0], 1.0);
+  for (const DblVec& x : seen)
+    EXPECT_LE(x[0], 1.0);
+}
+
+TEST_F(ScoTermination, SingleVariableEqualityRowIsProjectedExactly)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ CVX_UNCONVERGED, [](DblVec& x) { x[1] += 1e-3; }, std::nullopt };
+  auto prob = makeScriptedProblem(model, &targetCost);
+  prob->addLinearConstraint(exprSub(AffExpr(prob->getVars()[1]), 0.0), EQ);  // x1 fixed at its start value 0
+  BasicTrustRegionSQP solver(prob);
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  EXPECT_EQ(solver.x()[1], 0.0);
+}
+
+TEST_F(ScoTermination, GeneralHardRowViolationRejectsTheProposal)  // NOLINT
+{
+  // The first solution sits on the corner (0.1, -0.1) of the box, where x0 + x1 <= 0 binds; the edit violates the row
+  // while staying inside the box and improving the merit
+  auto model = scriptedOsqp();
+  model->script.push_back({ CVX_UNCONVERGED, [](DblVec& x) { x[1] += 0.05; }, std::nullopt });
+  auto prob = makeScriptedProblem(model, &targetCost);
+  prob->addLinearConstraint(exprAdd(AffExpr(prob->getVars()[0]), AffExpr(prob->getVars()[1])), INEQ);
+  BasicTrustRegionSQP solver(prob);
+  std::vector<DblVec> seen;
+  solver.addCallback([&seen](OptProb*, OptResults& r) { seen.push_back(r.x); });
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  for (const DblVec& x : seen)
+    EXPECT_LE(x[0] + x[1], solver.getParameters().cnt_tolerance);
+  EXPECT_LE(solver.x()[0] + solver.x()[1], solver.getParameters().cnt_tolerance);
+  EXPECT_TRUE(solver.results().tiny_trust_region_after_uncertified ||
+              solver.results().exit_reason != EXIT_TINY_TRUST_REGION);
 }
 
 TEST_F(ScoTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
