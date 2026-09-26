@@ -160,6 +160,18 @@ struct SQPParameters
   bool operator!=(const SQPParameters& rhs) const;
 };
 
+/** @brief Which inner-loop test ended the most recent convexification */
+enum class SQPExitReason : std::uint8_t
+{
+  kNone,                  /**< No inner-loop exit yet */
+  kSmallImprovement,      /**< The certified predicted improvement fell below min_approx_improve */
+  kSmallImprovementRatio, /**< The certified improvement ratio fell below min_approx_improve_frac */
+  kTinyTrustRegion        /**< The trust region shrank below min_trust_box_size */
+};
+
+/** @brief Return a string representation of the SQPExitReason */
+std::string toString(SQPExitReason reason);
+
 /** @brief This struct contains information and results for the SQP problem */
 struct SQPResults
 {
@@ -226,6 +238,19 @@ struct SQPResults
 
   /** @brief Whether the best iterate satisfies every constraint to SQPParameters::cnt_tolerance; set on every exit */
   bool best_is_feasible{ false };
+
+  /** @brief Which inner-loop test ended the most recent convexification */
+  SQPExitReason exit_reason{ SQPExitReason::kNone };
+  /** @brief Small-improvement exits the uncertified test would have taken but the certified test did not */
+  int n_suppressed_exits{ 0 };
+  /**
+   * @brief Whether the most recent inner exit was a tiny-trust-region exit that followed a rejected or failed step
+   * from a solve that certified nothing: a failed or unconverged solve, or one whose duality gap is at least
+   * min_approx_improve
+   * @details The tiny box reads as convergence only when the model was poor at small radii; this flag says when
+   * solver inexactness, not the model, drove the shrinking.
+   */
+  bool tiny_trust_region_after_uncertified{ false };
 
   void print() const;
 };

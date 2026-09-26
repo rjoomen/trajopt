@@ -36,6 +36,7 @@
 #include <chrono>
 #include <cassert>
 #include <cmath>
+#include <limits>
 
 namespace trajopt_sqp
 {
@@ -189,6 +190,12 @@ bool TrustRegionSQPSolver::bestIsFeasible() const
   return raw.size() == 0 || raw.maxCoeff() < params.cnt_tolerance;
 }
 
+double TrustRegionSQPSolver::certifiedGap() const
+{
+  const double gap = qp_solver->getDualityGap();
+  return std::isnan(gap) ? std::numeric_limits<double>::infinity() : gap;
+}
+
 bool TrustRegionSQPSolver::verifySQPSolverConvergence()
 {
   if (!bestIsFeasible())
@@ -279,6 +286,8 @@ bool TrustRegionSQPSolver::stepSQPSolver()
   if (results_.box_size.maxCoeff() < params.min_trust_box_size)
   {
     TESSERACT_LOG_DEBUG("Converged because trust region is tiny");
+    results_.exit_reason = SQPExitReason::kTinyTrustRegion;
+    results_.tiny_trust_region_after_uncertified = uncertified_rejection_;
     status_ = SQPStatus::kConverged;
     return true;
   }
@@ -288,6 +297,7 @@ bool TrustRegionSQPSolver::stepSQPSolver()
 void TrustRegionSQPSolver::runTrustRegionLoop()
 {
   results_.trust_region_iteration = 0;
+  uncertified_rejection_ = false;
   int qp_solver_failures = 0;
   while (results_.box_size.maxCoeff() >= params.min_trust_box_size)
   {
@@ -316,6 +326,7 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
 
         TESSERACT_LOG_DEBUG("Shrunk trust region. New box size: {:.4f}", results_.box_size[0]);
         status_ = SQPStatus::kRunning;
+        uncertified_rejection_ = true;
         continue;
       }
 
@@ -328,6 +339,7 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
 
         TESSERACT_LOG_DEBUG("Shrunk trust region to minimum. New box size: {:.4f}", results_.box_size[0]);
         status_ = SQPStatus::kRunning;
+        uncertified_rejection_ = true;
         continue;
       }
 
@@ -347,38 +359,50 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
       continue;
     }
 
-    // Check if the entire NLP Converged
-    if (results_.approx_merit_improve < -1e-5)
-    {
-      TESSERACT_LOG_WARN("Approximate merit function got worse ({:.3e}). (convexification is probably wrong to "
-                         "zeroth order)",
-                         results_.approx_merit_improve);
-    }
+    // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small
+    const double gap = certifiedGap();
+    const bool uncertified = !(gap < params.min_approx_improve);
+    const double approx = results_.approx_merit_improve;
+    const double denom = std::max(std::abs(results_.best_exact_merit), 1e-12);
+    const double roundoff = 1e-12 * std::max(1.0, std::abs(results_.best_exact_merit));
+    const bool exits_without_gap =
+        approx < params.min_approx_improve || approx / denom < params.min_approx_improve_frac;
 
-    if (results_.approx_merit_improve < params.min_approx_improve)
+    if (approx < -(gap + roundoff))
     {
-      TESSERACT_LOG_DEBUG("Converged because improvement was small ({:.3e} < {:.3e})",
-                          results_.approx_merit_improve,
+      TESSERACT_LOG_WARN("QP predicted a merit increase beyond its duality gap ({:.3e} < -{:.3e})", approx, gap);
+    }
+    else if (approx + gap < params.min_approx_improve)
+    {
+      TESSERACT_LOG_DEBUG("Converged because improvement was small ({:.3e} + gap {:.3e} < {:.3e})",
+                          approx,
+                          gap,
                           params.min_approx_improve);
+      results_.exit_reason = SQPExitReason::kSmallImprovement;
+      results_.tiny_trust_region_after_uncertified = false;
       status_ = SQPStatus::kConverged;
       return;
     }
-
-    const double denom = std::max(std::abs(results_.best_exact_merit), 1e-12);
-    const double approx_frac = results_.approx_merit_improve / denom;
-    if (approx_frac < params.min_approx_improve_frac)
+    else if ((approx + gap) / denom < params.min_approx_improve_frac)
     {
       TESSERACT_LOG_DEBUG("Converged because improvement ratio was small ({:.3e} < {:.3e})",
-                          approx_frac,
+                          (approx + gap) / denom,
                           params.min_approx_improve_frac);
+      results_.exit_reason = SQPExitReason::kSmallImprovementRatio;
+      results_.tiny_trust_region_after_uncertified = false;
       status_ = SQPStatus::kConverged;
       return;
     }
+
+    if (exits_without_gap)
+      ++results_.n_suppressed_exits;
 
     // Check if the bounding trust region needs to be shrunk
     // This happens if the exact solution got worse or if the QP approximation deviates from the exact by too much
     if (results_.exact_merit_improve < 0 || results_.merit_improve_ratio < params.improve_ratio_threshold)
     {
+      if (uncertified)
+        uncertified_rejection_ = true;
       qp_problem->scaleBoxSize(params.trust_shrink_ratio);
       qp_solver->updateBounds(qp_problem->getBoundsLower(), qp_problem->getBoundsUpper());
       results_.box_size = qp_problem->getBoxSize();

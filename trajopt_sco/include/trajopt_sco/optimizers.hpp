@@ -38,6 +38,20 @@ enum OptStatus : std::uint8_t
  */
 std::string toString(OptStatus status);
 
+/** @brief Which inner-loop test ended the most recent convexification */
+enum OptExitReason : std::uint8_t
+{
+  EXIT_NONE,
+  EXIT_SMALL_IMPROVEMENT,        // the certified predicted improvement fell below min_approx_improve
+  EXIT_SMALL_IMPROVEMENT_RATIO,  // the certified improvement ratio fell below min_approx_improve_frac
+  EXIT_TINY_TRUST_REGION         // the trust region shrank below min_trust_box_size
+};
+
+/**
+ * @brief Return a string representation of the OptExitReason.
+ */
+std::string toString(OptExitReason reason);
+
 struct OptResults
 {
   DblVec x;  // solution estimate
@@ -48,6 +62,18 @@ struct OptResults
   int n_func_evals{ 0 }, n_qp_solves{ 0 };
   /** @brief Whether the returned x satisfies every constraint to cnt_tolerance; set on every exit */
   bool best_is_feasible{ false };
+  /** @brief Which inner-loop test ended the most recent convexification */
+  OptExitReason exit_reason{ EXIT_NONE };
+  /** @brief Small-improvement exits the uncertified test would have taken but the certified test did not */
+  int n_suppressed_exits{ 0 };
+  /**
+   * @brief Whether the most recent inner exit was a tiny-trust-region exit that followed a rejected or failed step
+   * from a solve that certified nothing: a failed or unconverged solve, or one whose duality gap is at least
+   * min_approx_improve
+   * @details The tiny box reads as convergence only when the model was poor at small radii; this flag says when
+   * solver inexactness, not the model, drove the shrinking.
+   */
+  bool tiny_trust_region_after_uncertified{ false };
   void clear()
   {
     x.clear();
@@ -58,6 +84,9 @@ struct OptResults
     n_func_evals = 0;
     n_qp_solves = 0;
     best_is_feasible = false;
+    exit_reason = EXIT_NONE;
+    n_suppressed_exits = 0;
+    tiny_trust_region_after_uncertified = false;
   }
   OptResults() { clear(); }
 };

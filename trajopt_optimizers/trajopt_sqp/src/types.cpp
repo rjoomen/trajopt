@@ -123,6 +123,9 @@ void SQPResults::print() const
   std::cout << "convexify_iteration: " << convexify_iteration << '\n';
   std::cout << "trust_region_iteration: " << trust_region_iteration << '\n';
   std::cout << "overall_iteration: " << overall_iteration << '\n';
+  std::cout << "exit_reason: " << toString(exit_reason) << '\n';
+  std::cout << "n_suppressed_exits: " << n_suppressed_exits << '\n';
+  std::cout << "tiny_trust_region_after_uncertified: " << tiny_trust_region_after_uncertified << '\n';
 }
 
 std::string toString(SQPStatus status)
@@ -147,6 +150,23 @@ std::string toString(SQPStatus status)
       return "SQP_NON_FINITE_MERIT";
     default:
       return "SQP_STATUS_UNKNOWN";
+  }
+}
+
+std::string toString(SQPExitReason reason)
+{
+  switch (reason)
+  {
+    case SQPExitReason::kNone:
+      return "NONE";
+    case SQPExitReason::kSmallImprovement:
+      return "SMALL_IMPROVEMENT";
+    case SQPExitReason::kSmallImprovementRatio:
+      return "SMALL_IMPROVEMENT_RATIO";
+    case SQPExitReason::kTinyTrustRegion:
+      return "TINY_TRUST_REGION";
+    default:
+      return "UNKNOWN";
   }
 }
 

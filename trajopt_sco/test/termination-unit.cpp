@@ -5,11 +5,13 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 
 #include <trajopt_sco/expr_op_overloads.hpp>
+#include <trajopt_sco/expr_ops.hpp>
 #include <trajopt_sco/modeling_utils.hpp>
 #include <trajopt_sco/optimizers.hpp>
 #include <trajopt_sco/sco_common.hpp>
@@ -163,4 +165,121 @@ TEST_F(ScoTermination, NonFiniteStartFailsFast)  // NOLINT
   EXPECT_EQ(solver.optimize(), OPT_NON_FINITE_MERIT);
   EXPECT_EQ(model->solves, 0);
   EXPECT_FALSE(isUsable(solver.results()));
+}
+
+namespace
+{
+std::shared_ptr<test::ScriptedModel> scriptedOsqp()
+{
+  return std::make_shared<test::ScriptedModel>(createModel(ModelType::OSQP));
+}
+
+/** @brief The target cost, plus 1 at every point other than the start, with the uncharged cost as its exact model */
+class ChargedTargetCost : public Cost
+{
+public:
+  ChargedTargetCost(VarVector vars, DblVec start) : Cost("charged"), vars_(std::move(vars)), start_(std::move(start)) {}
+  double value(const DblVec& x) override
+  {
+    const DblVec v{ vars_[0].value(x), vars_[1].value(x) };
+    const double base = sq(v[0] - 0.8) + sq(v[1] + 0.3);
+    return v == start_ ? base : base + 1.0;
+  }
+  ConvexObjective::Ptr convex(const DblVec& /*x*/, Model* model) override
+  {
+    auto out = std::make_shared<ConvexObjective>(model);
+    out->addQuadExpr(exprSquare(exprSub(AffExpr(vars_[0]), 0.8)));
+    out->addQuadExpr(exprSquare(exprAdd(AffExpr(vars_[1]), 0.3)));
+    return out;
+  }
+  VarVector getVars() override { return vars_; }
+
+private:
+  VarVector vars_;
+  DblVec start_;
+};
+
+OptResults runScripted(const std::shared_ptr<test::ScriptedModel>& model,
+                       const std::function<void(BasicTrustRegionSQPParameters&)>& tune = nullptr)
+{
+  BasicTrustRegionSQP solver(makeScriptedProblem(model, &targetCost));
+  if (tune)
+    tune(solver.getParameters());
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  return solver.results();
+}
+}  // namespace
+
+TEST_F(ScoTermination, CertifiedSolvesExitAsBefore)  // NOLINT
+{
+  const OptResults r = runScripted(scriptedOsqp());
+  EXPECT_EQ(r.status, OPT_CONVERGED);
+  EXPECT_EQ(r.exit_reason, EXIT_SMALL_IMPROVEMENT);
+  EXPECT_EQ(r.n_suppressed_exits, 0);
+}
+
+TEST_F(ScoTermination, LargeGapSuppressesTheExit)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ std::nullopt, nullptr, 1.0 };
+  const OptResults r = runScripted(model);
+  EXPECT_NE(r.exit_reason, EXIT_SMALL_IMPROVEMENT);
+  EXPECT_GT(r.n_suppressed_exits, 0);
+}
+
+TEST_F(ScoTermination, NaNGapIsUncertified)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ std::nullopt, nullptr, std::nan("") };
+  const OptResults r = runScripted(model);
+  EXPECT_NE(r.exit_reason, EXIT_SMALL_IMPROVEMENT);
+  EXPECT_GT(r.n_suppressed_exits, 0);
+}
+
+TEST_F(ScoTermination, PredictionBelowMinusGapGoesToTheRatioTest)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->script.push_back({ std::nullopt, [](DblVec& x) { x[0] = -0.05; }, 0.0 });
+  const OptResults r = runScripted(model);
+  EXPECT_EQ(r.status, OPT_CONVERGED);
+  EXPECT_NEAR(r.x[0], 0.8, 1e-3);
+  EXPECT_GE(r.n_suppressed_exits, 1);
+}
+
+TEST_F(ScoTermination, RatioExitRecordsItsReason)  // NOLINT
+{
+  const OptResults r = runScripted(scriptedOsqp(), [](BasicTrustRegionSQPParameters& p) {
+    p.min_approx_improve = 1e-12;
+    p.min_approx_improve_frac = 0.5;
+  });
+  EXPECT_EQ(r.exit_reason, EXIT_SMALL_IMPROVEMENT_RATIO);
+}
+
+TEST_F(ScoTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
+{
+  auto run = [](double gap) {
+    auto model = scriptedOsqp();
+    model->every_solve = test::ScriptedModelSolve{ std::nullopt, nullptr, gap };
+    auto prob = std::make_shared<test::ScriptedProb>(model);
+    prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
+    prob->addCost(std::make_shared<ChargedTargetCost>(prob->getVars(), DblVec{ 0.0, 0.0 }));
+    BasicTrustRegionSQP solver(prob);
+    solver.getParameters().min_approx_improve = 1e-12;  // reach the tiny box before a small-improvement exit
+    solver.initialize({ 0.0, 0.0 });
+    solver.optimize();
+    EXPECT_EQ(solver.results().exit_reason, EXIT_TINY_TRUST_REGION);
+    return solver.results().tiny_trust_region_after_uncertified;
+  };
+  EXPECT_FALSE(run(0.0));
+  EXPECT_TRUE(run(1.0));
+}
+
+TEST_F(ScoTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->script.push_back({ CVX_FAILED, nullptr, std::nullopt });
+  const OptResults r = runScripted(model, [](BasicTrustRegionSQPParameters& p) { p.trust_box_size = 1.5e-4; });
+  EXPECT_EQ(r.exit_reason, EXIT_TINY_TRUST_REGION);
+  EXPECT_TRUE(r.tiny_trust_region_after_uncertified);
 }

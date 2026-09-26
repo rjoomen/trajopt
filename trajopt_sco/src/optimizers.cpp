@@ -5,6 +5,7 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <cmath>
 #include <chrono>
 #include <cstdio>
+#include <limits>
 #include <memory>
 TRAJOPT_IGNORE_WARNINGS_POP
 
@@ -45,6 +46,23 @@ std::string toString(OptStatus status)
   }
 }
 
+std::string toString(OptExitReason reason)
+{
+  switch (reason)
+  {
+    case OptExitReason::EXIT_NONE:
+      return "EXIT_NONE";
+    case OptExitReason::EXIT_SMALL_IMPROVEMENT:
+      return "EXIT_SMALL_IMPROVEMENT";
+    case OptExitReason::EXIT_SMALL_IMPROVEMENT_RATIO:
+      return "EXIT_SMALL_IMPROVEMENT_RATIO";
+    case OptExitReason::EXIT_TINY_TRUST_REGION:
+      return "EXIT_TINY_TRUST_REGION";
+    default:
+      return "EXIT_UNKNOWN";
+  }
+}
+
 bool isUsable(const OptResults& results)
 {
   switch (results.status)
@@ -67,7 +85,10 @@ std::ostream& operator<<(std::ostream& o, const OptResults& r)
     << "cost values: " << trajopt_common::Str(r.cost_vals) << '\n'
     << "constraint violations: " << trajopt_common::Str(r.cnt_viols) << '\n'
     << "n func evals: " << r.n_func_evals << '\n'
-    << "n qp solves: " << r.n_qp_solves << '\n';
+    << "n qp solves: " << r.n_qp_solves << '\n'
+    << "exit reason: " << toString(r.exit_reason) << '\n'
+    << "n suppressed exits: " << r.n_suppressed_exits << '\n'
+    << "tiny trust region after uncertified: " << r.tiny_trust_region_after_uncertified << '\n';
   return o;
 }
 
@@ -822,6 +843,7 @@ OptStatus BasicTrustRegionSQP::optimize()
       //    objective = cleanupExpr(objective);
       model_->setObjective(objective);
 
+      bool uncertified_rejection = false;
       int qp_solver_failures = 0;
       while (param_.trust_box_size >= param_.min_trust_box_size)
       {
@@ -851,6 +873,7 @@ OptStatus BasicTrustRegionSQP::optimize()
             adjustTrustRegion(param_.trust_shrink_ratio);
             TESSERACT_LOG_INFO("shrunk trust region. new box size: {:.4f}", param_.trust_box_size);
             qp_solver_failures++;
+            uncertified_rejection = true;
             continue;
           }
 
@@ -860,6 +883,7 @@ OptStatus BasicTrustRegionSQP::optimize()
             setTrustRegionSize(param_.min_trust_box_size);
             TESSERACT_LOG_INFO("shrunk trust region. new box size: {:.4f}", param_.trust_box_size);
             qp_solver_failures++;
+            uncertified_rejection = true;
             continue;
           }
 
@@ -909,34 +933,51 @@ OptStatus BasicTrustRegionSQP::optimize()
           continue;
         }
 
-        if (iteration_results.approx_merit_improve < -1e-5)
-        {
-          TESSERACT_LOG_WARN("approximate merit function got worse ({:.3e}). "
-                             "(convexification is probably wrong to zeroth order)",
-                             iteration_results.approx_merit_improve);
-        }
+        // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small
+        double gap = model_->getDualityGap();
+        if (std::isnan(gap))
+          gap = std::numeric_limits<double>::infinity();
+        const bool uncertified = !(gap < param_.min_approx_improve);
+        const double approx = iteration_results.approx_merit_improve;
+        const double merit_denom = std::max(std::abs(iteration_results.old_merit), 1e-12);
+        const double roundoff = 1e-12 * std::max(1.0, std::abs(iteration_results.old_merit));
+        const bool exits_without_gap =
+            approx < param_.min_approx_improve || approx / merit_denom < param_.min_approx_improve_frac;
 
-        if (iteration_results.approx_merit_improve < param_.min_approx_improve)
+        if (approx < -(gap + roundoff))
         {
-          TESSERACT_LOG_INFO("converged because improvement was small ({:.3e} < {:.3e})",
-                             iteration_results.approx_merit_improve,
+          TESSERACT_LOG_WARN("QP predicted a merit increase beyond its duality gap ({:.3e} < -{:.3e})", approx, gap);
+        }
+        else if (approx + gap < param_.min_approx_improve)
+        {
+          TESSERACT_LOG_INFO("converged because improvement was small ({:.3e} + gap {:.3e} < {:.3e})",
+                             approx,
+                             gap,
                              param_.min_approx_improve);
+          results_.exit_reason = EXIT_SMALL_IMPROVEMENT;
+          results_.tiny_trust_region_after_uncertified = false;
           retval = OPT_CONVERGED;
           goto penaltyadjustment;
         }
-
-        const double merit_denom = std::max(std::abs(iteration_results.old_merit), 1e-12);
-        if (iteration_results.approx_merit_improve / merit_denom < param_.min_approx_improve_frac)
+        else if ((approx + gap) / merit_denom < param_.min_approx_improve_frac)
         {
           TESSERACT_LOG_INFO("converged because improvement ratio was small ({:.3e} < {:.3e})",
-                             iteration_results.approx_merit_improve / merit_denom,
+                             (approx + gap) / merit_denom,
                              param_.min_approx_improve_frac);
+          results_.exit_reason = EXIT_SMALL_IMPROVEMENT_RATIO;
+          results_.tiny_trust_region_after_uncertified = false;
           retval = OPT_CONVERGED;
           goto penaltyadjustment;
         }
-        else if (iteration_results.exact_merit_improve < 0 ||
-                 iteration_results.merit_improve_ratio < param_.improve_ratio_threshold)
+
+        if (exits_without_gap)
+          ++results_.n_suppressed_exits;
+
+        if (iteration_results.exact_merit_improve < 0 ||
+            iteration_results.merit_improve_ratio < param_.improve_ratio_threshold)
         {
+          if (uncertified)
+            uncertified_rejection = true;
           adjustTrustRegion(param_.trust_shrink_ratio);
           TESSERACT_LOG_INFO("shrunk trust region. new box size: {:.4f}", param_.trust_box_size);
         }
@@ -954,6 +995,8 @@ OptStatus BasicTrustRegionSQP::optimize()
       if (param_.trust_box_size < param_.min_trust_box_size)
       {
         TESSERACT_LOG_INFO("converged because trust region is tiny");
+        results_.exit_reason = EXIT_TINY_TRUST_REGION;
+        results_.tiny_trust_region_after_uncertified = uncertified_rejection;
         retval = OPT_CONVERGED;
         goto penaltyadjustment;
       }
