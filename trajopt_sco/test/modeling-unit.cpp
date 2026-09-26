@@ -6,6 +6,7 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <vector>
 TRAJOPT_IGNORE_WARNINGS_POP
 
+#include <trajopt_sco/expr_op_overloads.hpp>
 #include <trajopt_sco/modeling.hpp>
 #include <trajopt_sco/solver_interface.hpp>
 
@@ -88,4 +89,25 @@ TEST(modeling, getClosestFeasiblePointIsIdempotent)  // NOLINT
   const DblVec twice = prob->getClosestFeasiblePoint(once, delta);
 
   EXPECT_EQ(once, twice);
+}
+
+TEST(ConvexObjective, ValueIgnoresSlackVariables)  // NOLINT
+{
+  const std::vector<ModelType> solvers = availableSolvers();
+  if (solvers.empty())
+    GTEST_SKIP() << "no convex solver available";
+  const Model::Ptr model = createModel(solvers.front());
+  const Var x = model->addVar("x");
+  model->update();
+
+  ConvexObjective objective(model.get());
+  objective.addHinge(x - 1.0, 2.0);  // 2 * max(0, x - 1)
+  objective.addAbs(x + 0.5, 3.0);    // 3 * |x + 0.5|
+  model->update();
+
+  // Arbitrary slack values: the hinge slack at 0, the absolute-value slacks at 7
+  DblVec values(model->getVars().size(), 7.0);
+  values[x.var_rep->index] = 2.0;
+  values[objective.vars_[0].var_rep->index] = 0.0;
+  EXPECT_NEAR(objective.value(values), (2.0 * 1.0) + (3.0 * 2.5), 1e-12);
 }
