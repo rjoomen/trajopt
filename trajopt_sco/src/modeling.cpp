@@ -24,6 +24,8 @@ void ConvexObjective::addHinge(const AffExpr& affexpr, double coeff)
   exprDec(ineqs_.back(), hinge);
   AffExpr const hinge_cost = exprMult(AffExpr(hinge), coeff);
   exprInc(quad_, hinge_cost);
+  hinges_.emplace_back(affexpr, coeff);
+  exprInc(slack_terms_, hinge_cost);
 }
 
 void ConvexObjective::addAbs(const AffExpr& affexpr, double coeff)
@@ -40,6 +42,8 @@ void ConvexObjective::addAbs(const AffExpr& affexpr, double coeff)
   neg_plus_pos.vars.push_back(neg);
   neg_plus_pos.vars.push_back(pos);
   exprInc(quad_, neg_plus_pos);
+  abs_terms_.emplace_back(affexpr, coeff);
+  exprInc(slack_terms_, neg_plus_pos);
   // Add neg/pos to problem. They will be nonzero when ABS is not satisfied
   AffExpr affeq = affexpr;
   affeq.vars.reserve(affeq.vars.size() + 2);
@@ -147,7 +151,15 @@ ConvexConstraints::~ConvexConstraints()
     removeFromModel();
 }
 
-double ConvexObjective::value(const DblVec& x) const { return quad_.value(x); }
+double ConvexObjective::value(const DblVec& x) const
+{
+  double out = quad_.value(x) - slack_terms_.value(x);
+  for (const auto& [expr, coeff] : hinges_)
+    out += coeff * pospart(expr.value(x));
+  for (const auto& [expr, coeff] : abs_terms_)
+    out += coeff * std::fabs(expr.value(x));
+  return out;
+}
 DblVec Constraint::violations(const DblVec& x)
 {
   DblVec val = value(x);

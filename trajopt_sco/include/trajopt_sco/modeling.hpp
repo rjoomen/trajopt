@@ -11,6 +11,7 @@
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <vector>
 #include <memory>
+#include <utility>
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <trajopt_sco/solver_interface.hpp>
@@ -48,6 +49,11 @@ public:
   bool inModel() const { return model_ != nullptr; }
   void addConstraintsToModel();
   void removeFromModel();
+  /**
+   * @brief The objective at x, with hinge and absolute terms valued from their affine expressions
+   * @details The result does not depend on the slack variables, so it is the QP's objective at its optimum over the
+   * slacks for the given problem variables. A variable from addMax is not replaced; its caller values it.
+   */
   double value(const DblVec& x) const;
 
   Model* model_;
@@ -59,6 +65,12 @@ public:
   // INEQ Constraints
   AffExprVector ineqs_;
   CntVector cnts_;
+  /** @brief Each hinge term's affine expression and coefficient; value() charges coeff * max(0, expr) */
+  std::vector<std::pair<AffExpr, double>> hinges_;
+  /** @brief Each absolute term's affine expression and coefficient; value() charges coeff * |expr| */
+  std::vector<std::pair<AffExpr, double>> abs_terms_;
+  /** @brief The slack terms addHinge and addAbs put into quad_, which value() replaces by the terms above */
+  AffExpr slack_terms_;
 };
 
 /**
