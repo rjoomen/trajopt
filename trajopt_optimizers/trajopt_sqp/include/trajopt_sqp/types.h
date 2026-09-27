@@ -116,9 +116,15 @@ struct SQPParameters
   double improve_ratio_threshold = 0.25;
   /** @brief NLP converges if trust region is smaller than this */
   double min_trust_box_size = 1e-4;
-  /** @brief NLP converges if approx_merit_improves is smaller than this */
+  /**
+   * @brief NLP converges if approx_merit_improve plus the QP solve's duality gap is smaller than this; an unconverged
+   * solve never converges this way
+   */
   double min_approx_improve = 1e-4;
-  /** @brief NLP converges if approx_merit_improve / best_exact_merit < min_approx_improve_frac */
+  /**
+   * @brief NLP converges if (approx_merit_improve + duality gap) / |best_exact_merit| < min_approx_improve_frac; an
+   * unconverged solve never converges this way
+   */
   double min_approx_improve_frac = std::numeric_limits<double>::lowest();
   /** @brief QP-solve budget for the whole run, across all penalty iterations; checked before each convexification,
    * so the last one may exceed it */
@@ -155,7 +161,7 @@ struct SQPParameters
   bool operator!=(const SQPParameters& rhs) const;
 };
 
-/** @brief Which inner-loop test ended the most recent convexification */
+/** @brief Which inner-loop test caused the most recent inner exit */
 enum class SQPExitReason : std::uint8_t
 {
   kNone,                  /**< No inner-loop exit yet */
@@ -237,7 +243,10 @@ struct SQPResults
    */
   bool best_is_feasible{ false };
 
-  /** @brief Which inner-loop test ended the most recent convexification */
+  /**
+   * @brief Which inner-loop test caused the most recent inner exit; kNone before the first
+   * @details Kept when a later convexification ends on an accepted step or the solve ends on a limit
+   */
   SQPExitReason exit_reason{ SQPExitReason::kNone };
   /** @brief Small-improvement exits the uncertified test would have taken but the certified test did not */
   int n_suppressed_exits{ 0 };

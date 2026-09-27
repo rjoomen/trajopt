@@ -123,6 +123,7 @@ void SQPResults::print() const
   std::cout << "convexify_iteration: " << convexify_iteration << '\n';
   std::cout << "trust_region_iteration: " << trust_region_iteration << '\n';
   std::cout << "overall_iteration: " << overall_iteration << '\n';
+  std::cout << "best_is_feasible: " << best_is_feasible << '\n';
   std::cout << "exit_reason: " << toString(exit_reason) << '\n';
   std::cout << "n_suppressed_exits: " << n_suppressed_exits << '\n';
   std::cout << "n_unconverged_qp_solves: " << n_unconverged_qp_solves << '\n';

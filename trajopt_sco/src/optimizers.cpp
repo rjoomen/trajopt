@@ -85,6 +85,7 @@ std::ostream& operator<<(std::ostream& o, const OptResults& r)
     << "constraint violations: " << trajopt_common::Str(r.cnt_viols) << '\n'
     << "n func evals: " << r.n_func_evals << '\n'
     << "n qp solves: " << r.n_qp_solves << '\n'
+    << "best is feasible: " << r.best_is_feasible << '\n'
     << "exit reason: " << toString(r.exit_reason) << '\n'
     << "n suppressed exits: " << r.n_suppressed_exits << '\n'
     << "n unconverged qp solves: " << r.n_unconverged_qp_solves << '\n'

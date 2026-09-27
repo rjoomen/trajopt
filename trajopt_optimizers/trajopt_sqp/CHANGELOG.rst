@@ -20,6 +20,11 @@ Forthcoming
   unconverged, each logging one warning; an unconverged solve is a trial point judged by the trust-region test and
   can never take a small-improvement exit; only ``MaxIterReached``/``PIQP_MAX_ITER_REACHED`` stop counting against
   ``max_qp_solver_failures``
+* Add the public statics ``OSQPEigenSolver::toQPSolveStatus()`` and ``PIQPSolver::toQPSolveStatus()`` to classify
+  a raw solver status as a ``QPSolveStatus``
+* Breaking (ABI): ``SQPResults`` gains fields, changing its layout
+* Breaking (ABI): ``TrustRegionSQPSolver`` gains the protected members ``uncertified_rejection_``,
+  ``last_qp_status_``, ``bestIsFeasible()`` and ``certifiedGap()``, changing its layout for subclasses
 * Breaking: ``QPProblem`` gains ``getNLPVariableBoundsLower()`` / ``getNLPVariableBoundsUpper()``; unconverged
   solutions are clamped to them
 * Add ``SQPExitReason`` (+ ``toString``) and ``SQPResults::exit_reason``, ``n_suppressed_exits``,

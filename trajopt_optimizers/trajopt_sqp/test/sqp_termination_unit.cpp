@@ -1,3 +1,26 @@
+/**
+ * @file sqp_termination_unit.cpp
+ * @brief Tests how TrustRegionSQPSolver ends a solve and reports why
+ *
+ * @author Roelof Oomen
+ * @date September 25, 2026
+ *
+ * @copyright Copyright (c) 2026, Roelof Oomen
+ *
+ * @par License
+ * Software License Agreement (Apache License)
+ * @par
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * @par
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <gtest/gtest.h>
@@ -335,9 +358,9 @@ TEST_F(SQPTermination, MoreThanNinetyNineConvexifyRoundsRun)  // NOLINT
   EXPECT_EQ(solver.getStatus(), SQPStatus::kIterationLimit);
 }
 
-// OSQP's own gap at a polished solution is far below min_approx_improve, so the certified test takes today's exit.
-// Forcing the gap to exactly 0 here would misread OSQP's own round-off as a contradiction; a solver that reports 0
-// solves exactly.
+// OSQP's own gap at a polished solution is far below min_approx_improve, so the certified test takes the uncertified
+// test's exit. Forcing the gap to exactly 0 here would misread OSQP's own round-off as a contradiction; a solver that
+// reports 0 solves exactly.
 TEST_F(SQPTermination, CertifiedSolvesExitAsBefore)  // NOLINT
 {
   auto solver = makeSolver();

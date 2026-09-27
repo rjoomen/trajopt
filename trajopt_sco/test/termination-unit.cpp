@@ -5,6 +5,7 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -244,7 +245,9 @@ TEST_F(ScoTermination, LoggingToAMissingDirDoesNotCrash)  // NOLINT
   // fopen fails on a missing log_dir; optimize() must still return rather than fclose a null stream
   BasicTrustRegionSQP solver(makeProblem());
   solver.getParameters().log_results = true;
-  solver.getParameters().log_dir = "/tmp/claude-1002/sco-termination-unit-missing-log-dir";
+  const std::string missing_dir = testing::TempDir() + "sco-termination-unit-missing-log-dir";
+  ASSERT_FALSE(std::filesystem::exists(missing_dir));
+  solver.getParameters().log_dir = missing_dir;
   solver.initialize({ 0.0, 0.0 });
   EXPECT_NO_FATAL_FAILURE(solver.optimize());
 }

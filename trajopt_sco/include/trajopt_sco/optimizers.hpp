@@ -38,7 +38,7 @@ enum OptStatus : std::uint8_t
  */
 std::string toString(OptStatus status);
 
-/** @brief Which inner-loop test ended the most recent convexification */
+/** @brief Which inner-loop test caused the most recent inner exit */
 enum OptExitReason : std::uint8_t
 {
   EXIT_NONE,
@@ -65,7 +65,10 @@ struct OptResults
    * on every exit
    */
   bool best_is_feasible{ false };
-  /** @brief Which inner-loop test ended the most recent convexification */
+  /**
+   * @brief Which inner-loop test caused the most recent inner exit; EXIT_NONE before the first
+   * @details Kept when a later convexification ends on an accepted step or the solve ends on a limit
+   */
   OptExitReason exit_reason{ EXIT_NONE };
   /** @brief Small-improvement exits the uncertified test would have taken but the certified test did not */
   int n_suppressed_exits{ 0 };
@@ -141,9 +144,15 @@ struct BasicTrustRegionSQPParameters
   double improve_ratio_threshold = 0.25;
   /** @brief If trust region gets any smaller, exit and report convergence */
   double min_trust_box_size = 1e-4;
-  /** @brief If model improves less than this, exit and report convergence */
+  /**
+   * @brief If the model's improvement plus the convex solve's duality gap is less than this, exit and report
+   * convergence; an unconverged solve never exits this way
+   */
   double min_approx_improve = 1e-4;
-  /** @brief If model improves less than this, exit and report convergence */
+  /**
+   * @brief If (model improvement + duality gap) / |merit| is less than this, exit and report convergence; an
+   * unconverged solve never exits this way
+   */
   double min_approx_improve_frac = std::numeric_limits<double>::lowest();
   /** @brief Max number of convexifications per penalty iteration; the count restarts when the penalty increases */
   int max_iter = 50;
