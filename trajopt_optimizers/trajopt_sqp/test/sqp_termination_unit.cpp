@@ -104,7 +104,7 @@ std::shared_ptr<trajopt_sqp::test::ScriptedQPSolver> scriptedOsqp()
 class SQPTermination : public testing::Test
 {
 protected:
-  void SetUp() override { tesseract::common::getLogger()->set_level(spdlog::level::off); }
+  trajopt_sqp::test::ScopedLogLevel log_level_{ spdlog::level::off };
 };
 
 TEST_F(SQPTermination, TimeLimitBeforeAnySolveJudgesTheStartPoint)  // NOLINT

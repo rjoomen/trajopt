@@ -10,6 +10,8 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <trajopt_sco/expr_ops.hpp>
 #include <trajopt_sco/piqp_interface.hpp>
 
+#include "scripted-model.hpp"
+
 using namespace sco;
 
 TEST(PIQPModel, StatusClassification)  // NOLINT
@@ -79,7 +81,7 @@ TEST(PIQPModel, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT
 TEST(PIQPModel, IterationCapReturnsUnconvergedValues)  // NOLINT
 {
   // Silence the unconverged-solve WARN that every capped solve logs
-  tesseract::common::getLogger()->set_level(spdlog::level::err);
+  const test::ScopedLogLevel log_level(spdlog::level::err);
   auto config = std::make_shared<PIQPModelConfig>();
   config->settings.max_iter = 1;
   const Model::Ptr model = createModel(ModelType::PIQP, config);

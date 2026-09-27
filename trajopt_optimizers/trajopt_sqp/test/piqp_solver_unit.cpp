@@ -221,7 +221,7 @@ TEST(PIQPSolverUnit, DualityGapReportedWithGapCheckOff)  // NOLINT
 TEST(PIQPSolverUnit, IterationCapReturnsAnUnconvergedSolution)  // NOLINT
 {
   // Silence the unconverged-solve WARN that every capped solve logs
-  tesseract::common::getLogger()->set_level(spdlog::level::off);
+  const trajopt_sqp::test::ScopedLogLevel log_level(spdlog::level::off);
   PIQPSolver solver;
   solver.settings.max_iter = 1;
   setupOneSidedProblem(solver);

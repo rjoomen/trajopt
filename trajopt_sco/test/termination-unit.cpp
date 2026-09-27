@@ -74,7 +74,7 @@ OptProb::Ptr makeScriptedProblem(const Model::Ptr& model, double (*cost)(const E
 class ScoTermination : public testing::Test
 {
 protected:
-  void SetUp() override { tesseract::common::getLogger()->set_level(spdlog::level::err); }
+  test::ScopedLogLevel log_level_{ spdlog::level::err };
 };
 
 TEST_F(ScoTermination, IterationLimitKeepsItsStatusWhenFeasible)  // NOLINT

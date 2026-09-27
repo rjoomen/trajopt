@@ -10,6 +10,8 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <trajopt_sco/expr_ops.hpp>
 #include <trajopt_sco/osqp_interface.hpp>
 
+#include "scripted-model.hpp"
+
 using namespace sco;
 
 namespace
@@ -48,7 +50,7 @@ TEST(OSQPModel, DualityGapSmallAtSolution)  // NOLINT
 TEST(OSQPModel, IterationCapReturnsUnconvergedValuesWithFiniteGap)  // NOLINT
 {
   // Silence the unconverged-solve WARN that every capped solve logs
-  tesseract::common::getLogger()->set_level(spdlog::level::err);
+  const test::ScopedLogLevel log_level(spdlog::level::err);
   auto config = std::make_shared<OSQPModelConfig>();
   config->settings.max_iter = 1;
   config->settings.polishing = 0;
