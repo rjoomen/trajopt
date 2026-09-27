@@ -62,7 +62,7 @@ public:
 
   QPSolveStatus solve() override;
 
-  /** @brief Classify a PIQP status */
+  /** @brief Classify a PIQP status; an iteration-capped solve is unconverged */
   static QPSolveStatus toQPSolveStatus(piqp::Status status);
 
   Eigen::VectorXd getSolution() override;

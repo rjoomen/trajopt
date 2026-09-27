@@ -112,6 +112,7 @@ QPSolveStatus OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status status)
     case OsqpEigen::Status::Solved:
       return QPSolveStatus::kSolved;
     case OsqpEigen::Status::SolvedInaccurate:
+    case OsqpEigen::Status::MaxIterReached:
       return QPSolveStatus::kUnconverged;
     default:
       return QPSolveStatus::kFailed;

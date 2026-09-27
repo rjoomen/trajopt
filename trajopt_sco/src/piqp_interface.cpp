@@ -263,6 +263,8 @@ CvxOptStatus piqpStatusToCvxOptStatus(piqp::Status status)
   {
     case piqp::Status::PIQP_SOLVED:
       return CVX_SOLVED;
+    case piqp::Status::PIQP_MAX_ITER_REACHED:
+      return CVX_UNCONVERGED;
     case piqp::Status::PIQP_PRIMAL_INFEASIBLE:
     case piqp::Status::PIQP_DUAL_INFEASIBLE:
       return CVX_INFEASIBLE;

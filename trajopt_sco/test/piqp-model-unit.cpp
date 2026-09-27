@@ -5,6 +5,7 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <limits>
 TRAJOPT_IGNORE_WARNINGS_POP
 
+#include <tesseract/common/logging.h>
 #include <trajopt_sco/expr_op_overloads.hpp>
 #include <trajopt_sco/expr_ops.hpp>
 #include <trajopt_sco/piqp_interface.hpp>
@@ -14,7 +15,7 @@ using namespace sco;
 TEST(PIQPModel, StatusClassification)  // NOLINT
 {
   EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_SOLVED), CVX_SOLVED);
-  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_MAX_ITER_REACHED), CVX_FAILED);
+  EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_MAX_ITER_REACHED), CVX_UNCONVERGED);
   EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_PRIMAL_INFEASIBLE), CVX_INFEASIBLE);
   EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_DUAL_INFEASIBLE), CVX_INFEASIBLE);
   EXPECT_EQ(piqpStatusToCvxOptStatus(piqp::Status::PIQP_NUMERICS), CVX_FAILED);
@@ -73,6 +74,22 @@ TEST(PIQPModel, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT
 
   ASSERT_EQ(model->optimize(), CVX_INFEASIBLE);
   EXPECT_EQ(model->getDualityGap(), std::numeric_limits<double>::infinity());
+}
+
+TEST(PIQPModel, IterationCapReturnsUnconvergedValues)  // NOLINT
+{
+  // Silence the unconverged-solve WARN that every capped solve logs
+  tesseract::common::getLogger()->set_level(spdlog::level::err);
+  auto config = std::make_shared<PIQPModelConfig>();
+  config->settings.max_iter = 1;
+  const Model::Ptr model = createModel(ModelType::PIQP, config);
+  const Var x = model->addVar("x");
+  model->update();
+  model->setObjective(exprSquare(x - 1.0));
+  model->addIneqCnt(x - 0.5, "x_max");
+  model->update();
+  EXPECT_EQ(model->optimize(), CVX_UNCONVERGED);
+  EXPECT_TRUE(std::isfinite(model->getVarValue(x)));
 }
 
 TEST(PIQPModel, ConfigSettingsAreUsed)  // NOLINT

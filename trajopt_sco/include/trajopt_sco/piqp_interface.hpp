@@ -89,6 +89,7 @@ public:
   VarVector getVars() const override;
 };
 
-/** @brief Classify a PIQP status; infeasibility is kept apart from other failures */
+/** @brief Classify a PIQP status; an iteration-capped solve is unconverged, infeasibility is kept apart from other
+ * failures */
 CvxOptStatus piqpStatusToCvxOptStatus(piqp::Status status);
 }  // namespace sco

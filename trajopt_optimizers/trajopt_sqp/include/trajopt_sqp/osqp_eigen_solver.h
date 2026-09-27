@@ -66,7 +66,7 @@ public:
 
   QPSolveStatus solve() override;
 
-  /** @brief Classify an OSQP status; an inaccurate solve is unconverged */
+  /** @brief Classify an OSQP status; an inaccurate or iteration-capped solve is unconverged */
   static QPSolveStatus toQPSolveStatus(OsqpEigen::Status status);
 
   Eigen::VectorXd getSolution() override;

@@ -93,7 +93,15 @@ bool PIQPSolver::clear()
 
 QPSolveStatus PIQPSolver::toQPSolveStatus(piqp::Status status)
 {
-  return status == piqp::Status::PIQP_SOLVED ? QPSolveStatus::kSolved : QPSolveStatus::kFailed;
+  switch (status)
+  {
+    case piqp::Status::PIQP_SOLVED:
+      return QPSolveStatus::kSolved;
+    case piqp::Status::PIQP_MAX_ITER_REACHED:
+      return QPSolveStatus::kUnconverged;
+    default:
+      return QPSolveStatus::kFailed;
+  }
 }
 
 QPSolveStatus PIQPSolver::solve()

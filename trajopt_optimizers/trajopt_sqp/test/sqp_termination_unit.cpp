@@ -3,6 +3,7 @@ TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <gtest/gtest.h>
 #include <Eigen/Core>
 #include <tesseract/common/logging.h>
+#include <OsqpEigen/OsqpEigen.h>
 TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <cmath>
@@ -100,6 +101,18 @@ TEST_F(SQPTermination, ConvergedRunIsFeasibleAndUsable)  // NOLINT
   solver.solve(makeProblem(0.5));
   EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
   EXPECT_TRUE(solver.getResults().best_is_feasible);
+}
+
+TEST_F(SQPTermination, EveryQPIterationCappedStillEndsHonestlyWithinLimits)  // NOLINT
+{
+  auto qp_solver = std::make_shared<trajopt_sqp::OSQPEigenSolver>();
+  qp_solver->solver_->settings()->setMaxIteration(3);
+  auto solver = makeSolver(qp_solver);
+  solver.solve(makeProblem());
+  EXPECT_NE(solver.getStatus(), SQPStatus::kQPSolveFailed);
+  EXPECT_GT(solver.getResults().n_unconverged_qp_solves, 0);
+  const Eigen::VectorXd& x = solver.getResults().best_var_vals;
+  EXPECT_LE(x.head(2).cwiseAbs().maxCoeff(), 1.0);
 }
 
 TEST(SQPIsUsable, EveryStatusAndFeasibility)  // NOLINT
