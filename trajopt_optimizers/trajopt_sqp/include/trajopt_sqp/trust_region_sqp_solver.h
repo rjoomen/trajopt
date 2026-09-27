@@ -144,6 +144,9 @@ protected:
   /** @brief The most recent solve's duality gap; +infinity for a NaN gap or an unconverged solve */
   double certifiedGap() const;
 
+  /** @brief Push the QP problem's current trust box bounds to the QP solver and record the box size */
+  void pushTrustRegion();
+
   /** @brief Scale the trust box by ratio and push the new bounds to the QP solver */
   void scaleTrustRegion(double ratio);
 

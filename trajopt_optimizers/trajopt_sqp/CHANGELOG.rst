@@ -23,8 +23,10 @@ Forthcoming
 * Add the public statics ``OSQPEigenSolver::toQPSolveStatus()`` and ``PIQPSolver::toQPSolveStatus()`` to classify
   a raw solver status as a ``QPSolveStatus``
 * Breaking (ABI): ``SQPResults`` gains fields, changing its layout
-* Breaking (ABI): ``TrustRegionSQPSolver`` gains the protected members ``uncertified_rejection_``,
-  ``last_qp_status_``, ``bestIsFeasible()`` and ``certifiedGap()``, changing its layout for subclasses
+* Breaking (ABI): ``TrustRegionSQPSolver`` gains the protected data members ``uncertified_rejection_`` and
+  ``last_qp_status_``, changing its layout for subclasses, and the protected non-virtual members
+  ``bestIsFeasible()``, ``certifiedGap()``, ``pushTrustRegion()``, ``scaleTrustRegion()``,
+  ``shrinkTrustRegion()`` and ``recordInnerExit()``
 * Breaking: ``QPProblem`` gains ``getNLPVariableBoundsLower()`` / ``getNLPVariableBoundsUpper()``; unconverged
   solutions are clamped to them
 * Add ``SQPExitReason`` (+ ``toString``) and ``SQPResults::exit_reason``, ``n_suppressed_exits``,

@@ -203,11 +203,16 @@ double TrustRegionSQPSolver::certifiedGap() const
   return std::isnan(gap) ? std::numeric_limits<double>::infinity() : gap;
 }
 
+void TrustRegionSQPSolver::pushTrustRegion()
+{
+  qp_solver->updateBounds(qp_problem->getBoundsLower(), qp_problem->getBoundsUpper());
+  results_.box_size = qp_problem->getBoxSize();
+}
+
 void TrustRegionSQPSolver::scaleTrustRegion(double ratio)
 {
   qp_problem->scaleBoxSize(ratio);
-  qp_solver->updateBounds(qp_problem->getBoundsLower(), qp_problem->getBoundsUpper());
-  results_.box_size = qp_problem->getBoxSize();
+  pushTrustRegion();
 }
 
 void TrustRegionSQPSolver::shrinkTrustRegion(bool uncertified)
@@ -355,8 +360,7 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
       {
         // Convex solver failed and this is the last attempt so setting the trust region to the minimum
         qp_problem->setBoxSize(Eigen::VectorXd::Constant(qp_problem->getNumNLPVars(), params.min_trust_box_size));
-        qp_solver->updateBounds(qp_problem->getBoundsLower(), qp_problem->getBoundsUpper());
-        results_.box_size = qp_problem->getBoxSize();
+        pushTrustRegion();
 
         TESSERACT_LOG_DEBUG("Shrunk trust region to minimum. New box size: {:.4f}", results_.box_size[0]);
         status_ = SQPStatus::kRunning;
