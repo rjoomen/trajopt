@@ -12,8 +12,11 @@ Forthcoming
 * Value hinge and absolute convex costs from their affine expressions, independent of the slack variables
 * Breaking: ``ConvexObjective`` gains ``hinges_``, ``abs_terms_`` and ``slack_terms_`` members, backing hinge and
   absolute cost evaluation
-* Add ``Model::getDualityGap()``, reporting +infinity for OSQP and PIQP when the most recent solve returned no
-  solution (other backends report 0); small-improvement exits require ``approx_improve + gap`` below
+* Breaking (ABI): ``OptResults`` gains fields, changing its layout and that of ``Optimizer`` and
+  ``BasicTrustRegionSQP``, which hold it by value
+* Breaking (ABI): add the non-pure virtual ``Model::getDualityGap()``, changing ``Model``'s vtable, so a ``Model``
+  built against the old header must be rebuilt; it reports +infinity for OSQP and PIQP when the most recent solve
+  returned no solution (other backends report 0); small-improvement exits require ``approx_improve + gap`` below
   ``min_approx_improve``, or the ratio ``(approx_improve + gap) / merit_denom`` below ``min_approx_improve_frac``;
   a prediction below minus the gap no longer ends the solve as converged and instead goes to the trust-region test
 * Breaking: ``CvxOptStatus`` gains ``CVX_UNCONVERGED`` after ``CVX_SOLVED`` (later values renumbered); OSQP
@@ -23,13 +26,17 @@ Forthcoming
   ``max_qp_solver_failures``
 * Add free functions ``osqpStatusToCvxOptStatus()``/``piqpStatusToCvxOptStatus()`` to classify a raw solver status
   as a ``CvxOptStatus``
-* ``OptProb::getClosestFeasiblePointQP()`` accepts an unconverged solve instead of only a solved one
+* ``OptProb::getClosestFeasiblePointQP()`` returns the solution of a solve that stops on its iteration cap (OSQP
+  ``MAX_ITER_REACHED``, PIQP ``PIQP_MAX_ITER_REACHED``) instead of throwing; that solution is not clamped to the
+  bounds
 * Breaking: ``BasicTrustRegionSQPResults::update`` takes the model variable values (by value) instead of the model
 * Clamp unconverged solutions to the bounds and trust box, project single-variable linear equalities exactly, and
   reject the step when another hard linear row violates ``cnt_tolerance``
 * Breaking: ``OptProb`` gains ``getLinearEqConstraints()``/``getLinearIneqConstraints()``, exposing the rows
   ``addLinearConstraint()`` imposes as hard constraints
 * Guard each log-file close against a stream that failed to open
+* ``BasicTrustRegionSQP`` gains the protected non-virtual members ``trustBoxBounds()`` and
+  ``holdToHardConstraints()``
 * Add ``OptExitReason`` (``EXIT_*``, + ``toString``) and ``OptResults::exit_reason``, ``n_suppressed_exits``,
   ``n_unconverged_qp_solves`` and ``tiny_trust_region_after_uncertified``
 
