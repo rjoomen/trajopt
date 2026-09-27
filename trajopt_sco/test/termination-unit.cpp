@@ -9,6 +9,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <trajopt_sco/expr_op_overloads.hpp>
@@ -186,21 +187,58 @@ TEST_F(ScoTermination, NonFiniteStartFailsFast)  // NOLINT
 
 namespace
 {
+/** @brief An equality constraint whose error is value at every point */
+Constraint::Ptr constantError(double value, const VarVector& vars, const std::string& name)
+{
+  auto err =
+      VectorOfVector::construct([value](const Eigen::VectorXd& /*x*/) { return Eigen::VectorXd::Constant(1, value); });
+  return std::make_shared<ConstraintFromErrFunc>(err, vars, Eigen::VectorXd(), EQ, name);
+}
+}  // namespace
+
+TEST_F(ScoTermination, InfiniteStartViolationFailsFast)  // NOLINT
+{
+  auto model = std::make_shared<test::ScriptedModel>(createModel(ModelType::OSQP));
+  OptProb::Ptr prob = makeScriptedProblem(model, &targetCost);
+  prob->addConstraint(constantError(std::numeric_limits<double>::infinity(), prob->getVars(), "infinite"));
+  BasicTrustRegionSQP solver(prob);
+  solver.initialize({ 0.0, 0.0 });
+  EXPECT_EQ(solver.optimize(), OPT_NON_FINITE_MERIT);
+  EXPECT_EQ(model->solves, 0);
+  EXPECT_FALSE(isUsable(solver.results()));
+}
+
+TEST_F(ScoTermination, NonFiniteStartViolationIsNotFeasible)  // NOLINT
+{
+  // The first constraint is satisfied and the second is NaN, so a max that skips NaN would read feasible
+  OptProb::Ptr prob = makeProblem(0.0);
+  prob->addConstraint(constantError(std::nan(""), prob->getVars(), "nan"));
+  BasicTrustRegionSQP solver(prob);
+  solver.initialize({ 0.0, 0.0 });
+  EXPECT_EQ(solver.optimize(), OPT_NON_FINITE_MERIT);
+  EXPECT_FALSE(solver.results().best_is_feasible);
+}
+
+namespace
+{
 std::shared_ptr<test::ScriptedModel> scriptedOsqp()
 {
   return std::make_shared<test::ScriptedModel>(createModel(ModelType::OSQP));
 }
 
-/** @brief The target cost, plus 1 at every point other than the start, with the uncharged cost as its exact model */
+/** @brief The target cost, plus charge at every point other than the start, with the uncharged cost as its model */
 class ChargedTargetCost : public Cost
 {
 public:
-  ChargedTargetCost(VarVector vars, DblVec start) : Cost("charged"), vars_(std::move(vars)), start_(std::move(start)) {}
+  ChargedTargetCost(VarVector vars, DblVec start, double charge = 1.0)
+    : Cost("charged"), vars_(std::move(vars)), start_(std::move(start)), charge_(charge)
+  {
+  }
   double value(const DblVec& x) override
   {
     const DblVec v{ vars_[0].value(x), vars_[1].value(x) };
     const double base = sq(v[0] - 0.8) + sq(v[1] + 0.3);
-    return v == start_ ? base : base + 1.0;
+    return v == start_ ? base : base + charge_;
   }
   ConvexObjective::Ptr convex(const DblVec& /*x*/, Model* model) override
   {
@@ -214,6 +252,7 @@ public:
 private:
   VarVector vars_;
   DblVec start_;
+  double charge_;
 };
 
 OptResults runScripted(const std::shared_ptr<test::ScriptedModel>& model,
@@ -290,6 +329,19 @@ TEST_F(ScoTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
   };
   EXPECT_FALSE(run(0.0));
   EXPECT_TRUE(run(1.0));
+}
+
+TEST_F(ScoTermination, TinyBoxAfterNonFiniteRejectionsIsFlagged)  // NOLINT
+{
+  // Every trial point has a NaN exact cost, so every step is rejected until the box is tiny
+  auto prob = std::make_shared<OptProb>(ModelType::OSQP);
+  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
+  prob->addCost(std::make_shared<ChargedTargetCost>(prob->getVars(), DblVec{ 0.0, 0.0 }, std::nan("")));
+  BasicTrustRegionSQP solver(prob);
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  EXPECT_EQ(solver.results().exit_reason, EXIT_TINY_TRUST_REGION);
+  EXPECT_TRUE(solver.results().tiny_trust_region_after_uncertified);
 }
 
 TEST_F(ScoTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT

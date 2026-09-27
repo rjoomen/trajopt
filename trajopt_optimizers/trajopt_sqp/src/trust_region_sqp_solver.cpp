@@ -187,7 +187,7 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
 bool TrustRegionSQPSolver::bestIsFeasible() const
 {
   const Eigen::VectorXd& raw = results_.best_constraint_violations.raw;
-  return raw.size() == 0 || raw.maxCoeff() < params.cnt_tolerance;
+  return raw.size() == 0 || (raw.allFinite() && raw.maxCoeff() < params.cnt_tolerance);
 }
 
 double TrustRegionSQPSolver::certifiedGap() const
@@ -355,6 +355,7 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
       TESSERACT_LOG_WARN("Merit at the trial point is not finite (exact {}, approximate {}); rejecting the step",
                          results_.new_exact_merit,
                          results_.new_approx_merit);
+      uncertified_rejection_ = true;
       qp_problem->scaleBoxSize(params.trust_shrink_ratio);
       qp_solver->updateBounds(qp_problem->getBoundsLower(), qp_problem->getBoundsUpper());
       results_.box_size = qp_problem->getBoxSize();

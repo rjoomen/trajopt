@@ -973,6 +973,7 @@ OptStatus BasicTrustRegionSQP::optimize()
           TESSERACT_LOG_WARN("merit at the trial point is not finite (exact {}, model {}); rejecting the step",
                              iteration_results.new_merit,
                              iteration_results.model_merit);
+          uncertified_rejection = true;
           adjustTrustRegion(param_.trust_shrink_ratio);
           continue;
         }
@@ -1092,7 +1093,10 @@ OptStatus BasicTrustRegionSQP::optimize()
 
 cleanup:
   assert(retval != INVALID && "should never happen");
-  results_.best_is_feasible = constraints.empty() || vecMax(results_.cnt_viols) < param_.cnt_tolerance;
+  results_.best_is_feasible =
+      constraints.empty() ||
+      (std::all_of(results_.cnt_viols.begin(), results_.cnt_viols.end(), [](double v) { return std::isfinite(v); }) &&
+       vecMax(results_.cnt_viols) < param_.cnt_tolerance);
   results_.status = retval;
   results_.total_cost = vecSum(results_.cost_vals);
   if (tesseract::common::isLogLevelEnabled(spdlog::level::info))

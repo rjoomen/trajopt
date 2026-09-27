@@ -10,6 +10,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <trajopt_ifopt/constraints/joint_position_constraint.h>
@@ -33,9 +34,11 @@ namespace
  * @brief Two variables in [-1, 1] pulled toward (0.8, -0.3) by a squared cost, optionally constrained to x0 = target
  * @param constraint_target When set, adds the hard constraint x0 = constraint_target (outside [-1, 1] is infeasible)
  * @param start The start point
+ * @param pin_sets The number of identical constraint sets that impose the constraint, each its own merit unit
  */
 std::shared_ptr<trajopt_sqp::TrajOptQPProblem> makeProblem(std::optional<double> constraint_target = std::nullopt,
-                                                           const Eigen::Vector2d& start = Eigen::Vector2d::Zero())
+                                                           const Eigen::Vector2d& start = Eigen::Vector2d::Zero(),
+                                                           int pin_sets = 1)
 {
   auto node = std::make_unique<trajopt_ifopt::Node>("Joints");
   const std::vector<std::string> names{ "j0", "j1" };
@@ -54,8 +57,9 @@ std::shared_ptr<trajopt_sqp::TrajOptQPProblem> makeProblem(std::optional<double>
     // Pin only x0.
     const std::vector<trajopt_ifopt::Bounds> cnt_bounds{ trajopt_ifopt::Bounds(*constraint_target,
                                                                                *constraint_target) };
-    auto cnt = std::make_shared<trajopt_ifopt::JointPosConstraint>(cnt_bounds, var, Eigen::VectorXd::Ones(1), "Pin");
-    qp->addConstraintSet(cnt);
+    for (int i = 0; i < pin_sets; ++i)
+      qp->addConstraintSet(std::make_shared<trajopt_ifopt::JointPosConstraint>(
+          cnt_bounds, var, Eigen::VectorXd::Ones(1), "Pin" + std::to_string(i)));
   }
   qp->setup();
   return qp;
@@ -239,6 +243,24 @@ TEST_F(SQPTermination, InfiniteStartViolationFailsFast)  // NOLINT
   EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
 }
 
+TEST_F(SQPTermination, NonFiniteStartViolationIsNotFeasible)  // NOLINT
+{
+  // The first merit unit is satisfied and the second is NaN, so a max that skips NaN would read feasible
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem(0.0, Eigen::Vector2d::Zero(), 2));
+  problem->exact_violations_hook = [](int call, const trajopt_sqp::ConstraintViolations& v) {
+    if (call != 1)
+      return v;
+    trajopt_sqp::ConstraintViolations out = v;
+    out.raw[1] = std::nan("");
+    out.weighted[1] = std::nan("");
+    return out;
+  };
+  auto solver = makeSolver();
+  solver.solve(problem);
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kNonFiniteMerit);
+  EXPECT_FALSE(solver.getResults().best_is_feasible);
+}
+
 // OSQP's own gap at a polished solution is far below min_approx_improve, so the certified test takes today's exit.
 // Forcing the gap to exactly 0 here would misread OSQP's own round-off as a contradiction; a solver that reports 0
 // solves exactly.
@@ -318,6 +340,19 @@ TEST_F(SQPTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
   make(1.0, uncertified_flag);
   EXPECT_FALSE(certified_flag);
   EXPECT_TRUE(uncertified_flag);
+}
+
+TEST_F(SQPTermination, TinyBoxAfterNonFiniteRejectionsIsFlagged)  // NOLINT
+{
+  // Every trial point has a NaN exact cost, so every step is rejected until the box is tiny
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
+  problem->exact_costs_hook = [](int call, const Eigen::VectorXd& costs) {
+    return call == 1 ? costs : Eigen::VectorXd::Constant(costs.size(), std::nan(""));
+  };
+  auto solver = makeSolver();
+  solver.solve(problem);
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
+  EXPECT_TRUE(solver.getResults().tiny_trust_region_after_uncertified);
 }
 
 TEST_F(SQPTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT
