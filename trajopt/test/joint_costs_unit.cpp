@@ -935,6 +935,41 @@ TEST_F(CostsTest, finite_difference_derivatives)  // NOLINT
   }
 }
 
+TEST_F(CostsTest, iterationLimitResultKeepsTheUsabilityVerdict)  // NOLINT
+{
+  ProblemConstructionInfo pci(env_);
+  pci.basic_info.n_steps = 5;
+  pci.basic_info.manip = "right_arm";
+  pci.kin = env_->getJointGroup(pci.basic_info.manip);
+
+  Eigen::VectorXd start_pos = pci.env->getCurrentJointValues(pci.kin->getJointIds());
+  pci.init_info.type = InitInfo::STATIONARY;
+  pci.init_info.data = start_pos.transpose().replicate(pci.basic_info.n_steps, 1);
+
+  auto jp = std::make_shared<JointPosTermInfo>();
+  jp->coeffs = std::vector<double>(7, 10.0);
+  jp->targets = std::vector<double>(7, -0.1);
+  jp->first_step = 0;
+  jp->last_step = pci.basic_info.n_steps - 1;
+  jp->name = "joint_pos_all";
+  jp->term_type = TermType::TT_COST;
+  pci.cost_infos.push_back(jp);
+
+  const TrajOptProb::Ptr prob = ConstructProblem(pci);
+  ASSERT_TRUE(!!prob);
+
+  sco::BasicTrustRegionSQP opt(prob);
+  opt.getParameters().max_iter = 1;
+  opt.initialize(trajToDblVec(prob->GetInitTraj()));
+  opt.optimize();
+
+  // A feasible run that ends on the iteration limit is not converged, but its trajectory is usable
+  const TrajOptResult result(opt.results(), *prob);
+  EXPECT_EQ(result.status, sco::OPT_SCO_ITERATION_LIMIT);
+  EXPECT_TRUE(result.best_is_feasible);
+  EXPECT_TRUE(result.usable);
+}
+
 ////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)

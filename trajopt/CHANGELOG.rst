@@ -4,6 +4,9 @@ Changelog for package trajopt
 
 Forthcoming
 -----------
+* ``TrajOptResult::status`` reports iteration and time limits as limits instead of converged; add
+  ``TrajOptResult::best_is_feasible`` and ``TrajOptResult::usable`` (``sco::isUsable``) to tell a usable limit result
+  from a failed one
 * Keep the cleaned single-timestep collision expression; ``cleanupAff`` returns a copy, and the single-timestep
   path discarded it unlike its three siblings
 
