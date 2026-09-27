@@ -143,6 +143,18 @@ protected:
 
   /** @brief The most recent solve's duality gap; +infinity for a NaN gap or an unconverged solve */
   double certifiedGap() const;
+
+  /** @brief Scale the trust box by ratio and push the new bounds to the QP solver */
+  void scaleTrustRegion(double ratio);
+
+  /** @brief Shrink the trust box by trust_shrink_ratio; mark an uncertified rejection when uncertified is true */
+  void shrinkTrustRegion(bool uncertified);
+
+  /**
+   * @brief Record why the trust region loop ended; flag a tiny trust region only when an uncertified rejection
+   * preceded it in the current loop
+   */
+  void recordInnerExit(SQPExitReason reason);
 };
 
 }  // namespace trajopt_sqp

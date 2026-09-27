@@ -252,6 +252,10 @@ protected:
    * @return false when another linear row is violated by more than cnt_tolerance
    */
   bool holdToHardConstraints(DblVec& model_var_vals) const;
+  /** @brief Whether results_.x satisfies every constraint to cnt_tolerance; a non-finite violation never does */
+  bool bestIsFeasible() const;
+  /** @brief The most recent solve's duality gap; +infinity for a NaN gap or a solve other than CVX_SOLVED */
+  double certifiedGap(CvxOptStatus status) const;
 
   Model::Ptr model_;
   BasicTrustRegionSQPParameters param_;
