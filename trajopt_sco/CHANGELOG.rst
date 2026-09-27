@@ -6,8 +6,8 @@ Forthcoming
 -----------
 * Report iteration and time limits as limits instead of converged; add ``OptResults::best_is_feasible`` and
   ``isUsable(const OptResults&)``; evaluate the start point before any limit can end the run
-* Breaking: add ``OPT_NON_FINITE_MERIT`` before ``INVALID`` (renumbering it); treat non-finite QP solutions as
-  failed solves and non-finite merits as rejected steps
+* Add ``OPT_NON_FINITE_MERIT`` after ``INVALID``, so existing values keep their numbers; treat non-finite QP
+  solutions as failed solves and non-finite merits as rejected steps
 * Divide the improvement ratio by the merit's magnitude
 * Value hinge and absolute convex costs from their affine expressions, independent of the slack variables
 * Breaking: ``ConvexObjective`` gains ``hinges_``, ``abs_terms_`` and ``slack_terms_`` members, backing hinge and
@@ -19,10 +19,10 @@ Forthcoming
   returned no solution (other backends report 0); small-improvement exits require ``approx_improve + gap`` below
   ``min_approx_improve``, or the ratio ``(approx_improve + gap) / merit_denom`` below ``min_approx_improve_frac``;
   a prediction below minus the gap no longer ends the solve as converged and instead goes to the trust-region test
-* Breaking: ``CvxOptStatus`` gains ``CVX_UNCONVERGED`` after ``CVX_SOLVED`` (later values renumbered); OSQP
-  ``SOLVED_INACCURATE`` and ``MAX_ITER_REACHED`` and PIQP ``PIQP_MAX_ITER_REACHED`` are unconverged, each logging
-  one warning; an unconverged solve is a trial point judged by the trust-region test and can never take a
-  small-improvement exit; only ``MAX_ITER_REACHED``/``PIQP_MAX_ITER_REACHED`` stop counting against
+* Breaking: ``CvxOptStatus`` gains ``CVX_UNCONVERGED`` after ``CVX_FAILED``, so existing values keep their
+  numbers; OSQP ``SOLVED_INACCURATE`` and ``MAX_ITER_REACHED`` and PIQP ``PIQP_MAX_ITER_REACHED`` are unconverged,
+  each logging one warning; an unconverged solve is a trial point judged by the trust-region test and can never
+  take a small-improvement exit; only ``MAX_ITER_REACHED``/``PIQP_MAX_ITER_REACHED`` stop counting against
   ``max_qp_solver_failures``
 * Add free functions ``osqpStatusToCvxOptStatus()``/``piqpStatusToCvxOptStatus()`` to classify a raw solver status
   as a ``CvxOptStatus``
@@ -31,12 +31,13 @@ Forthcoming
   bounds
 * Breaking: ``BasicTrustRegionSQPResults::update`` takes the model variable values (by value) instead of the model
 * Clamp unconverged solutions to the bounds and trust box, project single-variable linear equalities exactly, and
-  reject the step when another hard linear row violates ``cnt_tolerance``
+  reject the step when another hard linear row violates ``cnt_tolerance``; ``n_unconverged_qp_solves`` counts
+  only the solves that pass this check
 * Breaking: ``OptProb`` gains ``getLinearEqConstraints()``/``getLinearIneqConstraints()``, exposing the rows
   ``addLinearConstraint()`` imposes as hard constraints
 * Guard each log-file close against a stream that failed to open
-* ``BasicTrustRegionSQP`` gains the protected non-virtual members ``trustBoxBounds()`` and
-  ``holdToHardConstraints()``
+* ``BasicTrustRegionSQP`` gains the protected non-virtual members ``trustBoxBounds()``,
+  ``holdToHardConstraints()``, ``bestIsFeasible()`` and ``certifiedGap()``
 * Add ``OptExitReason`` (``EXIT_*``, + ``toString``) and ``OptResults::exit_reason``, ``n_suppressed_exits``,
   ``n_unconverged_qp_solves`` and ``tiny_trust_region_after_uncertified``
 

@@ -29,8 +29,8 @@ enum OptStatus : std::uint8_t
   OPT_PENALTY_ITERATION_LIMIT,
   OPT_TIME_LIMIT,
   OPT_FAILED,
-  OPT_NON_FINITE_MERIT,  // the merit at the start point is not finite
-  INVALID
+  INVALID,
+  OPT_NON_FINITE_MERIT  // the merit at the start point is not finite
 };
 
 /**
