@@ -914,7 +914,6 @@ OptStatus BasicTrustRegionSQP::optimize()
         }
         if (solved && status == CVX_UNCONVERGED)
         {
-          ++results_.n_unconverged_qp_solves;
           if (!holdToHardConstraints(model_var_vals))
           {
             TESSERACT_LOG_WARN("unconverged QP solution violates a hard linear constraint beyond cnt_tolerance; "
@@ -924,6 +923,7 @@ OptStatus BasicTrustRegionSQP::optimize()
             adjustTrustRegion(param_.trust_shrink_ratio);
             continue;
           }
+          ++results_.n_unconverged_qp_solves;
         }
         if (!solved)
         {
