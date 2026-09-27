@@ -2,6 +2,11 @@
 Changelog for package trajopt
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Keep the cleaned single-timestep collision expression; ``cleanupAff`` returns a copy, and the single-timestep
+  path discarded it unlike its three siblings
+
 0.35.0 (2026-05-28)
 -------------------
 * Fix toleranced Cartesian waypoints (`#560 <https://github.com/tesseract-robotics/trajopt/issues/560>`_)

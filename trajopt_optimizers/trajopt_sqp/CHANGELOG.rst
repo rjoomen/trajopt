@@ -2,6 +2,29 @@
 Changelog for package trajopt_sqp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Report iteration and time limits as limits instead of converged: reaching ``max_iter`` at a feasible iterate ends
+  the solve with ``kIterationLimit``; add ``SQPResults::best_is_feasible`` and
+  ``isUsable(SQPStatus, const SQPResults&)``
+* End the solve on a spent QP failure budget (``kQPSolveFailed``)
+* Add ``SQPStatus::kNonFiniteMerit``; treat non-finite QP solutions as failed solves and non-finite merits as
+  rejected steps
+* Pass the full gradient to OSQP (entries below 1e-7 were dropped from the solver's copy only)
+* Breaking: ``QPSolver`` gains ``getDualityGap()`` (a new pure virtual), reporting +infinity when the most recent
+  solve returned no solution; small-improvement exits require ``approx_improve + gap`` below
+  ``min_approx_improve``, or the ratio ``(approx_improve + gap) / denom`` below ``min_approx_improve_frac``; a
+  prediction below minus the gap is not certified and goes to the trust-region test instead
+* Breaking: ``QPSolver::solve()`` returns ``QPSolveStatus`` (``kSolved``, ``kUnconverged``, ``kFailed``) instead
+  of ``bool``; OSQP ``SolvedInaccurate`` and ``MaxIterReached`` and PIQP ``PIQP_MAX_ITER_REACHED`` are
+  unconverged, each logging one warning; an unconverged solve is a trial point judged by the trust-region test and
+  can never take a small-improvement exit; only ``MaxIterReached``/``PIQP_MAX_ITER_REACHED`` stop counting against
+  ``max_qp_solver_failures``
+* Breaking: ``QPProblem`` gains ``getNLPVariableBoundsLower()`` / ``getNLPVariableBoundsUpper()``; unconverged
+  solutions are clamped to them
+* Add ``SQPExitReason`` (+ ``toString``) and ``SQPResults::exit_reason``, ``n_suppressed_exits``,
+  ``n_unconverged_qp_solves`` and ``tiny_trust_region_after_uncertified``
+
 0.35.0 (2026-05-28)
 -------------------
 * Add trajopt_ifopt support for Windows and Mac (`#559 <https://github.com/tesseract-robotics/trajopt/issues/559>`_)

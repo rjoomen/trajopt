@@ -142,7 +142,7 @@ struct BasicTrustRegionSQPParameters
   double min_approx_improve = 1e-4;
   /** @brief If model improves less than this, exit and report convergence */
   double min_approx_improve_frac = std::numeric_limits<double>::lowest();
-  /** @brief The max number of iterations */
+  /** @brief Max number of convexifications per penalty iteration; the count restarts when the penalty increases */
   int max_iter = 50;
   /** @brief If improvement is less than improve_ratio_threshold, shrink trust region by this ratio */
   double trust_shrink_ratio = 0.1;
