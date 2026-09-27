@@ -20,6 +20,13 @@ TRAJOPT_IGNORE_WARNINGS_POP
 
 namespace sco
 {
+namespace
+{
+bool allFinite(const DblVec& values)
+{
+  return std::all_of(values.begin(), values.end(), [](double v) { return std::isfinite(v); });
+}
+}  // namespace
 
 const bool SUPER_DEBUG_MODE = false;
 
@@ -223,6 +230,20 @@ void BasicTrustRegionSQP::trustBoxBounds(const DblVec& x, DblVec& lower, DblVec&
     lower[i] = std::max(xi - param_.trust_box_size, lb[i]);
     upper[i] = std::min(xi + param_.trust_box_size, ub[i]);
   }
+}
+
+bool BasicTrustRegionSQP::bestIsFeasible() const
+{
+  return results_.cnt_viols.empty() ||
+         (allFinite(results_.cnt_viols) && vecMax(results_.cnt_viols) < param_.cnt_tolerance);
+}
+
+double BasicTrustRegionSQP::certifiedGap(CvxOptStatus status) const
+{
+  if (status != CVX_SOLVED)
+    return std::numeric_limits<double>::infinity();
+  const double gap = model_->getDualityGap();
+  return std::isnan(gap) ? std::numeric_limits<double>::infinity() : gap;
 }
 
 bool BasicTrustRegionSQP::holdToHardConstraints(DblVec& model_var_vals) const
@@ -876,6 +897,11 @@ OptStatus BasicTrustRegionSQP::optimize()
       model_->setObjective(objective);
 
       bool uncertified_rejection = false;
+      // Record why the trust region loop ended; flag a tiny trust region only after an uncertified rejection
+      const auto record_inner_exit = [&](OptExitReason reason) {
+        results_.exit_reason = reason;
+        results_.tiny_trust_region_after_uncertified = (reason == EXIT_TINY_TRUST_REGION && uncertified_rejection);
+      };
       int qp_solver_failures = 0;
       while (param_.trust_box_size >= param_.min_trust_box_size)
       {
@@ -889,7 +915,7 @@ OptStatus BasicTrustRegionSQP::optimize()
         {
           model_var_vals = model_->getVarValues(model_->getVars());
           // A non-finite solution is a failed solve; never evaluate it
-          if (!std::all_of(model_var_vals.begin(), model_var_vals.end(), [](double v) { return std::isfinite(v); }))
+          if (!allFinite(model_var_vals))
           {
             TESSERACT_LOG_WARN("convex solver returned a non-finite solution; treating the solve as failed");
             solved = false;
@@ -913,12 +939,12 @@ OptStatus BasicTrustRegionSQP::optimize()
           TESSERACT_LOG_WARN("Convex solver failed. Enable debug logging to see solver output. Saving model to "
                              "/tmp/fail.lp");
           model_->writeToFile("/tmp/fail.lp");
+          uncertified_rejection = true;
           if (qp_solver_failures < (param_.max_qp_solver_failures - 1))
           {
             adjustTrustRegion(param_.trust_shrink_ratio);
             TESSERACT_LOG_INFO("shrunk trust region. new box size: {:.4f}", param_.trust_box_size);
             qp_solver_failures++;
-            uncertified_rejection = true;
             continue;
           }
 
@@ -928,7 +954,6 @@ OptStatus BasicTrustRegionSQP::optimize()
             setTrustRegionSize(param_.min_trust_box_size);
             TESSERACT_LOG_INFO("shrunk trust region. new box size: {:.4f}", param_.trust_box_size);
             qp_solver_failures++;
-            uncertified_rejection = true;
             continue;
           }
 
@@ -979,17 +1004,13 @@ OptStatus BasicTrustRegionSQP::optimize()
           continue;
         }
 
-        // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small.
-        // An unconverged solve certifies nothing
-        double gap = (status == CVX_UNCONVERGED) ? std::numeric_limits<double>::infinity() : model_->getDualityGap();
-        if (std::isnan(gap))
-          gap = std::numeric_limits<double>::infinity();
+        // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small
+        const double gap = certifiedGap(status);
         const bool uncertified = !(gap < param_.min_approx_improve);
         const double approx = iteration_results.approx_merit_improve;
         const double merit_denom = std::max(std::abs(iteration_results.old_merit), 1e-12);
         const double roundoff = 1e-12 * std::max(1.0, std::abs(iteration_results.old_merit));
-        const bool exits_without_gap =
-            approx < param_.min_approx_improve || approx / merit_denom < param_.min_approx_improve_frac;
+        const double certified_ratio = (approx + gap) / merit_denom;
 
         if (approx < -(gap + roundoff))
         {
@@ -1001,23 +1022,21 @@ OptStatus BasicTrustRegionSQP::optimize()
                              approx,
                              gap,
                              param_.min_approx_improve);
-          results_.exit_reason = EXIT_SMALL_IMPROVEMENT;
-          results_.tiny_trust_region_after_uncertified = false;
+          record_inner_exit(EXIT_SMALL_IMPROVEMENT);
           retval = OPT_CONVERGED;
           goto penaltyadjustment;
         }
-        else if ((approx + gap) / merit_denom < param_.min_approx_improve_frac)
+        else if (certified_ratio < param_.min_approx_improve_frac)
         {
           TESSERACT_LOG_INFO("converged because improvement ratio was small ({:.3e} < {:.3e})",
-                             (approx + gap) / merit_denom,
+                             certified_ratio,
                              param_.min_approx_improve_frac);
-          results_.exit_reason = EXIT_SMALL_IMPROVEMENT_RATIO;
-          results_.tiny_trust_region_after_uncertified = false;
+          record_inner_exit(EXIT_SMALL_IMPROVEMENT_RATIO);
           retval = OPT_CONVERGED;
           goto penaltyadjustment;
         }
 
-        if (exits_without_gap)
+        if (approx < param_.min_approx_improve || approx / merit_denom < param_.min_approx_improve_frac)
           ++results_.n_suppressed_exits;
 
         if (iteration_results.exact_merit_improve < 0 ||
@@ -1042,8 +1061,7 @@ OptStatus BasicTrustRegionSQP::optimize()
       if (param_.trust_box_size < param_.min_trust_box_size)
       {
         TESSERACT_LOG_INFO("converged because trust region is tiny");
-        results_.exit_reason = EXIT_TINY_TRUST_REGION;
-        results_.tiny_trust_region_after_uncertified = uncertified_rejection;
+        record_inner_exit(EXIT_TINY_TRUST_REGION);
         retval = OPT_CONVERGED;
         goto penaltyadjustment;
       }
@@ -1056,7 +1074,7 @@ OptStatus BasicTrustRegionSQP::optimize()
     } /* sqp loop */
 
   penaltyadjustment:
-    if (results_.cnt_viols.empty() || vecMax(results_.cnt_viols) < param_.cnt_tolerance)
+    if (bestIsFeasible())
     {
       if (!results_.cnt_viols.empty())
         TESSERACT_LOG_INFO("woo-hoo! constraints are satisfied (to tolerance {:.2e})", param_.cnt_tolerance);
@@ -1094,10 +1112,7 @@ OptStatus BasicTrustRegionSQP::optimize()
 
 cleanup:
   assert(retval != INVALID && "should never happen");
-  results_.best_is_feasible =
-      constraints.empty() ||
-      (std::all_of(results_.cnt_viols.begin(), results_.cnt_viols.end(), [](double v) { return std::isfinite(v); }) &&
-       vecMax(results_.cnt_viols) < param_.cnt_tolerance);
+  results_.best_is_feasible = bestIsFeasible();
   results_.status = retval;
   results_.total_cost = vecSum(results_.cost_vals);
   if (tesseract::common::isLogLevelEnabled(spdlog::level::info))

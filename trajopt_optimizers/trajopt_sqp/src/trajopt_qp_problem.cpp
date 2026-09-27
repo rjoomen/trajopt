@@ -423,6 +423,9 @@ struct TrajOptQPProblem::Implementation
    * @details Called by convexify()
    */
   void updateNLPVariableBounds(const Eigen::Ref<const Eigen::VectorXd>& nlp_values);
+
+  /** @brief The first QP constraint row of the NLP variable bounds, below the merit and penalty rows */
+  Eigen::Index nlpVarBoundsOffset() const { return cvp.n_merit_constraints + cvp.n_penalty_constraints; }
 };
 
 void TrajOptQPProblem::Implementation::addConstraintSet(std::shared_ptr<trajopt_ifopt::ConstraintSet> constraint_set)
@@ -984,7 +987,7 @@ void TrajOptQPProblem::Implementation::convexify()
 
   // Add a diagonal matrix for the variable limits (including slack variables since the merit coeff is only applied in
   // the cost) below the actual constraints
-  constraint_matrix_row = cvp.n_merit_constraints + cvp.n_penalty_constraints;
+  constraint_matrix_row = nlpVarBoundsOffset();
   for (Eigen::Index i = 0; i < cvp.num_qp_vars; ++i)
     cache_triplets_2.emplace_back(constraint_matrix_row + i, i, 1.0);
 
@@ -1121,7 +1124,7 @@ void TrajOptQPProblem::Implementation::print() const
 void TrajOptQPProblem::Implementation::updateNLPVariableBounds(const Eigen::Ref<const Eigen::VectorXd>& nlp_values)
 {
   // Equivalent to BasicTrustRegionSQP::setTrustBoxConstraints
-  const Eigen::Index idx = cvp.n_merit_constraints + cvp.n_penalty_constraints;
+  const Eigen::Index idx = nlpVarBoundsOffset();
 
   auto lower = cvp.bounds_lower.segment(idx, cvp.n_nlp_vars);
   auto upper = cvp.bounds_upper.segment(idx, cvp.n_nlp_vars);
@@ -1259,14 +1262,12 @@ const Eigen::VectorXd& TrajOptQPProblem::getBoundsUpper() const { return impl_->
 
 Eigen::VectorXd TrajOptQPProblem::getNLPVariableBoundsLower() const
 {
-  const auto& cvp = std::as_const<Implementation>(*impl_).cvp;
-  return cvp.bounds_lower.segment(cvp.n_merit_constraints + cvp.n_penalty_constraints, cvp.n_nlp_vars);
+  return impl_->cvp.bounds_lower.segment(impl_->nlpVarBoundsOffset(), impl_->cvp.n_nlp_vars);
 }
 
 Eigen::VectorXd TrajOptQPProblem::getNLPVariableBoundsUpper() const
 {
-  const auto& cvp = std::as_const<Implementation>(*impl_).cvp;
-  return cvp.bounds_upper.segment(cvp.n_merit_constraints + cvp.n_penalty_constraints, cvp.n_nlp_vars);
+  return impl_->cvp.bounds_upper.segment(impl_->nlpVarBoundsOffset(), impl_->cvp.n_nlp_vars);
 }
 
 }  // namespace trajopt_sqp

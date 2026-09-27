@@ -238,12 +238,12 @@ CvxOptStatus PIQPModel::optimize()
   }
 
   solution_ = DblVec(solver.result().x.data(), solver.result().x.data() + n);
+  const CvxOptStatus result = piqpStatusToCvxOptStatus(status);
   // PIQP computes the gap on every iteration, whether or not check_duality_gap is set, but only a status that
   // carries a solution makes that gap meaningful; infeasible and failed statuses report a leftover value
-  if (status == piqp::Status::PIQP_SOLVED || status == piqp::Status::PIQP_MAX_ITER_REACHED)
+  if (result == CVX_SOLVED || result == CVX_UNCONVERGED)
     duality_gap_ = solver.result().info.duality_gap;
 
-  const CvxOptStatus result = piqpStatusToCvxOptStatus(status);
   if (result == CVX_UNCONVERGED)
   {
     TESSERACT_LOG_WARN("PIQP returned an unconverged solution: {}", piqp::status_to_string(status));

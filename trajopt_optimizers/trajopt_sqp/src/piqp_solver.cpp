@@ -155,14 +155,12 @@ QPSolveStatus PIQPSolver::solve()
   solver_.setup(hessian_, gradient_, eq_matrix, eq_values, ineq_matrix, ineq_lower, ineq_upper, x_lower, x_upper);
 
   const piqp::Status status = solver_.solve();
-  // PIQP computes the gap on every iteration, whether or not check_duality_gap is set, but only a status that
-  // carries a solution makes that gap meaningful; infeasible and failed statuses report a leftover value
-  if (status == piqp::Status::PIQP_SOLVED || status == piqp::Status::PIQP_MAX_ITER_REACHED)
-    duality_gap_ = solver_.result().info.duality_gap;
-
   const QPSolveStatus result = toQPSolveStatus(status);
   if (result != QPSolveStatus::kFailed)
   {
+    // PIQP computes the gap on every iteration, whether or not check_duality_gap is set, but only a status that
+    // carries a solution makes that gap meaningful; infeasible and failed statuses report a leftover value
+    duality_gap_ = solver_.result().info.duality_gap;
     if (result == QPSolveStatus::kUnconverged)
       TESSERACT_LOG_WARN("PIQP returned an unconverged solution: {}", piqp::status_to_string(status));
     solver_status_ = QPSolverStatus::kInitialized;
