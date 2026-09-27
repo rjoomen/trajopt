@@ -95,7 +95,7 @@ TEST(OSQPEigenSolverUnit, DualityGapMatchesPrimalMinusDualObjective)  // NOLINT
 TEST(OSQPEigenSolverUnit, IterationCapReturnsAnUnconvergedSolutionWithFiniteGap)  // NOLINT
 {
   // Silence the unconverged-solve WARN that every capped solve logs
-  tesseract::common::getLogger()->set_level(spdlog::level::off);
+  const trajopt_sqp::test::ScopedLogLevel log_level(spdlog::level::off);
   OSQPEigenSolver solver;
   solver.solver_->settings()->setMaxIteration(1);
   solver.solver_->settings()->setPolish(false);

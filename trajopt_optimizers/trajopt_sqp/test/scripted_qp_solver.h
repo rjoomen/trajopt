@@ -34,11 +34,31 @@
 #include <utility>
 #include <vector>
 
+#include <tesseract/common/logging.h>
+
 #include <trajopt_sqp/qp_problem.h>
 #include <trajopt_sqp/qp_solver.h>
 
 namespace trajopt_sqp::test
 {
+/** @brief Set the tesseract log level for the guard's lifetime; restore the previous level on destruction */
+class ScopedLogLevel
+{
+public:
+  explicit ScopedLogLevel(spdlog::level::level_enum level) : saved_(tesseract::common::getLogger()->level())
+  {
+    tesseract::common::getLogger()->set_level(level);
+  }
+  ~ScopedLogLevel() { tesseract::common::getLogger()->set_level(saved_); }
+  ScopedLogLevel(const ScopedLogLevel&) = delete;
+  ScopedLogLevel& operator=(const ScopedLogLevel&) = delete;
+  ScopedLogLevel(ScopedLogLevel&&) = delete;
+  ScopedLogLevel& operator=(ScopedLogLevel&&) = delete;
+
+private:
+  spdlog::level::level_enum saved_;
+};
+
 /** @brief Minimize x^2 - 2x subject to x <= 0.5; the optimum x = 0.5 has multiplier 1 on the one-sided row */
 inline void setupOneSidedProblem(QPSolver& solver)
 {

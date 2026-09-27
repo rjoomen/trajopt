@@ -8,11 +8,30 @@
 #include <string>
 #include <utility>
 
+#include <tesseract/common/logging.h>
 #include <trajopt_sco/modeling.hpp>
 #include <trajopt_sco/solver_interface.hpp>
 
 namespace sco::test
 {
+/** @brief Set the tesseract log level for the guard's lifetime; restore the previous level on destruction */
+class ScopedLogLevel
+{
+public:
+  explicit ScopedLogLevel(spdlog::level::level_enum level) : saved_(tesseract::common::getLogger()->level())
+  {
+    tesseract::common::getLogger()->set_level(level);
+  }
+  ~ScopedLogLevel() { tesseract::common::getLogger()->set_level(saved_); }
+  ScopedLogLevel(const ScopedLogLevel&) = delete;
+  ScopedLogLevel& operator=(const ScopedLogLevel&) = delete;
+  ScopedLogLevel(ScopedLogLevel&&) = delete;
+  ScopedLogLevel& operator=(ScopedLogLevel&&) = delete;
+
+private:
+  spdlog::level::level_enum saved_;
+};
+
 /** @brief One scripted override of an optimize(); an empty field leaves the inner model's result as it is */
 struct ScriptedModelSolve
 {
