@@ -25,6 +25,7 @@
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <algorithm>
 #include <cmath>
+#include <tesseract/common/logging.h>
 #include <gtest/gtest.h>
 #include <limits>
 #include <vector>
@@ -47,7 +48,7 @@ TEST(OSQPEigenSolverUnit, StatusClassification)  // NOLINT
   EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::SolvedInaccurate), QPSolveStatus::kUnconverged);
   EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::PrimalInfeasible), QPSolveStatus::kFailed);
   EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::DualInfeasible), QPSolveStatus::kFailed);
-  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::MaxIterReached), QPSolveStatus::kFailed);
+  EXPECT_EQ(OSQPEigenSolver::toQPSolveStatus(OsqpEigen::Status::MaxIterReached), QPSolveStatus::kUnconverged);
 }
 
 TEST(OSQPEigenSolverUnit, SuccessfulSolveClearsFailure)  // NOLINT
@@ -109,12 +110,27 @@ TEST(OSQPEigenSolverUnit, DualityGapMatchesPrimalMinusDualObjective)  // NOLINT
 
 TEST(OSQPEigenSolverUnit, DualityGapFiniteWithInfiniteBoundAtIterationCap)  // NOLINT
 {
+  // Silence the unconverged-solve WARN that every capped solve logs
+  tesseract::common::getLogger()->set_level(spdlog::level::off);
   OSQPEigenSolver solver;
   solver.solver_->settings()->setMaxIteration(1);
   solver.solver_->settings()->setPolish(false);
   setupOneSidedProblem(solver);
   solver.solve();
   EXPECT_TRUE(std::isfinite(solver.getDualityGap()));
+}
+
+TEST(OSQPEigenSolverUnit, IterationCapReturnsAnUnconvergedSolution)  // NOLINT
+{
+  // Silence the unconverged-solve WARN that every capped solve logs
+  tesseract::common::getLogger()->set_level(spdlog::level::off);
+  OSQPEigenSolver solver;
+  solver.solver_->settings()->setMaxIteration(1);
+  solver.solver_->settings()->setPolish(false);
+  setupOneSidedProblem(solver);
+  EXPECT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kUnconverged);
+  EXPECT_EQ(solver.getSolution().size(), 1);
+  EXPECT_TRUE(solver.getSolution().allFinite());
 }
 
 TEST(OSQPEigenSolverUnit, DualityGapInfiniteBeforeAnySolve)  // NOLINT

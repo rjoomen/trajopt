@@ -14,6 +14,7 @@ TRAJOPT_IGNORE_WARNINGS_POP
 #include <trajopt_sco/expr_ops.hpp>
 #include <trajopt_sco/modeling_utils.hpp>
 #include <trajopt_sco/optimizers.hpp>
+#include <trajopt_sco/osqp_interface.hpp>
 #include <trajopt_sco/sco_common.hpp>
 #include <tesseract/common/logging.h>
 
@@ -93,6 +94,21 @@ TEST_F(ScoTermination, TimeLimitWithViolatedStartIsNotUsable)  // NOLINT
   EXPECT_EQ(solver.optimize(), OPT_TIME_LIMIT);
   EXPECT_FALSE(solver.results().best_is_feasible);
   EXPECT_FALSE(isUsable(solver.results()));
+}
+
+TEST_F(ScoTermination, EveryQPIterationCappedStillEndsHonestlyWithinBounds)  // NOLINT
+{
+  auto config = std::make_shared<OSQPModelConfig>();
+  config->settings.max_iter = 3;
+  auto prob = std::make_shared<test::ScriptedProb>(createModel(ModelType::OSQP, config));
+  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
+  prob->addCost(std::make_shared<CostFromFunc>(ScalarOfVector::construct(&targetCost), prob->getVars(), "target"));
+  BasicTrustRegionSQP solver(prob);
+  solver.initialize({ 0.0, 0.0 });
+  EXPECT_NE(solver.optimize(), OPT_FAILED);
+  EXPECT_GT(solver.results().n_unconverged_qp_solves, 0);
+  for (const double v : solver.x())
+    EXPECT_LE(std::fabs(v), 1.0);
 }
 
 TEST(ScoIsUsable, EveryStatusAndFeasibility)  // NOLINT

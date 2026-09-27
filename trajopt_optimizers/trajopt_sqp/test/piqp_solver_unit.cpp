@@ -24,6 +24,7 @@
 #include <trajopt_common/macros.h>
 TRAJOPT_IGNORE_WARNINGS_PUSH
 #include <cmath>
+#include <tesseract/common/logging.h>
 #include <gtest/gtest.h>
 #include <limits>
 #include <vector>
@@ -81,7 +82,7 @@ TEST(PIQPSolverUnit, StatusClassification)  // NOLINT
 {
   using trajopt_sqp::QPSolveStatus;
   EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_SOLVED), QPSolveStatus::kSolved);
-  EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_MAX_ITER_REACHED), QPSolveStatus::kFailed);
+  EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_MAX_ITER_REACHED), QPSolveStatus::kUnconverged);
   EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_PRIMAL_INFEASIBLE), QPSolveStatus::kFailed);
   EXPECT_EQ(PIQPSolver::toQPSolveStatus(piqp::Status::PIQP_NUMERICS), QPSolveStatus::kFailed);
 }
@@ -230,6 +231,18 @@ TEST(PIQPSolverUnit, DualityGapReportedWithGapCheckOff)  // NOLINT
   ASSERT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kSolved);
   EXPECT_DOUBLE_EQ(solver.getDualityGap(), solver.solver().result().info.duality_gap);
   EXPECT_TRUE(std::isfinite(solver.getDualityGap()));
+}
+
+TEST(PIQPSolverUnit, IterationCapReturnsAnUnconvergedSolution)  // NOLINT
+{
+  // Silence the unconverged-solve WARN that every capped solve logs
+  tesseract::common::getLogger()->set_level(spdlog::level::off);
+  PIQPSolver solver;
+  solver.settings.max_iter = 1;
+  setupOneSidedProblem(solver);
+  EXPECT_EQ(solver.solve(), trajopt_sqp::QPSolveStatus::kUnconverged);
+  EXPECT_EQ(solver.getSolution().size(), 1);
+  EXPECT_TRUE(solver.getSolution().allFinite());
 }
 
 TEST(PIQPSolverUnit, DualityGapInfiniteAfterFailure)  // NOLINT

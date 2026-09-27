@@ -126,6 +126,7 @@ public:
   VarVector getVars() const override;
 };
 
-/** @brief Classify an OSQP status value; infeasibility is kept apart from other failures */
+/** @brief Classify an OSQP status value; an inaccurate or iteration-capped solve is unconverged, infeasibility is
+ * kept apart from other failures */
 CvxOptStatus osqpStatusToCvxOptStatus(OSQPInt status_val);
 }  // namespace sco

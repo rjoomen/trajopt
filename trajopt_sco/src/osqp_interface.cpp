@@ -540,7 +540,8 @@ CvxOptStatus OSQPModel::optimize()
       switch (status)
       {
         case OSQP_SOLVED:
-        case OSQP_SOLVED_INACCURATE:  // warned about below at every log level
+        case OSQP_SOLVED_INACCURATE:
+        case OSQP_MAX_ITER_REACHED:  // unconverged statuses are warned about below at every log level
           break;
         case OSQP_PRIMAL_INFEASIBLE:
           TESSERACT_LOG_WARN("OSQP primal infeasible");
@@ -553,9 +554,6 @@ CvxOptStatus OSQPModel::optimize()
           break;
         case OSQP_DUAL_INFEASIBLE_INACCURATE:
           TESSERACT_LOG_WARN("OSQP dual infeasible inaccurate");
-          break;
-        case OSQP_MAX_ITER_REACHED:
-          TESSERACT_LOG_WARN("OSQP max iterations reached");
           break;
         case OSQP_TIME_LIMIT_REACHED:
           TESSERACT_LOG_WARN("OSQP time limit reached");
@@ -634,6 +632,7 @@ CvxOptStatus osqpStatusToCvxOptStatus(OSQPInt status_val)
     case OSQP_SOLVED:
       return CVX_SOLVED;
     case OSQP_SOLVED_INACCURATE:
+    case OSQP_MAX_ITER_REACHED:
       return CVX_UNCONVERGED;
     case OSQP_PRIMAL_INFEASIBLE:
     case OSQP_PRIMAL_INFEASIBLE_INACCURATE:
