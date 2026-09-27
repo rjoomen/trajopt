@@ -428,6 +428,26 @@ TEST_F(ScoTermination, GeneralHardRowViolationRejectsTheProposal)  // NOLINT
               solver.results().exit_reason != EXIT_TINY_TRUST_REGION);
 }
 
+TEST_F(ScoTermination, RejectedUnconvergedSolutionIsNotCountedAsAProposal)  // NOLINT
+{
+  // Every solution is pushed to the box's upper corner, where x0 + x1 = 2 * box > cnt_tolerance, so none is proposed
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ CVX_UNCONVERGED,
+                                                 [](DblVec& x) {
+                                                   x[0] = 1.0;
+                                                   x[1] = 1.0;
+                                                 },
+                                                 std::nullopt };
+  auto prob = makeScriptedProblem(model, &targetCost);
+  prob->addLinearConstraint(exprAdd(AffExpr(prob->getVars()[0]), AffExpr(prob->getVars()[1])), INEQ);
+  BasicTrustRegionSQP solver(prob);
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  EXPECT_GT(model->solves, 0);
+  EXPECT_EQ(solver.results().n_unconverged_qp_solves, 0);
+  EXPECT_EQ(solver.results().exit_reason, EXIT_TINY_TRUST_REGION);
+}
+
 TEST_F(ScoTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
 {
   auto model = scriptedOsqp();
