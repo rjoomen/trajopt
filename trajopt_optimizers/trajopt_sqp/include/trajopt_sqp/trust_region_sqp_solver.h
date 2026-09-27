@@ -132,7 +132,10 @@ protected:
   /** @brief Whether best_var_vals satisfies every constraint to params.cnt_tolerance */
   bool bestIsFeasible() const;
 
-  /** @brief Whether a step from an uncertified or failed solve was rejected in the current trust region loop */
+  /**
+   * @brief Whether a step from an uncertified or failed solve, or with a non-finite merit, was rejected in the current
+   * trust region loop
+   */
   bool uncertified_rejection_{ false };
 
   /** @brief The status of the most recent QP solve */

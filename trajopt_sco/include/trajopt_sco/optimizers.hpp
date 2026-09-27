@@ -60,7 +60,10 @@ struct OptResults
   DblVec cost_vals;
   DblVec cnt_viols;
   int n_func_evals{ 0 }, n_qp_solves{ 0 };
-  /** @brief Whether the returned x satisfies every constraint to cnt_tolerance; set on every exit */
+  /**
+   * @brief Whether the returned x satisfies every constraint to cnt_tolerance; a non-finite violation never does; set
+   * on every exit
+   */
   bool best_is_feasible{ false };
   /** @brief Which inner-loop test ended the most recent convexification */
   OptExitReason exit_reason{ EXIT_NONE };
@@ -70,10 +73,10 @@ struct OptResults
   int n_unconverged_qp_solves{ 0 };
   /**
    * @brief Whether the most recent inner exit was a tiny-trust-region exit that followed a rejected or failed step
-   * from a solve that certified nothing: a failed or unconverged solve, or one whose duality gap is at least
-   * min_approx_improve
+   * from a solve that certified nothing: a failed or unconverged solve, one whose duality gap is at least
+   * min_approx_improve, or one whose trial point has a non-finite merit
    * @details The tiny box reads as convergence only when the model was poor at small radii; this flag says when
-   * solver inexactness, not the model, drove the shrinking.
+   * solver inexactness or a merit that could not be evaluated, not the model, drove the shrinking.
    */
   bool tiny_trust_region_after_uncertified{ false };
   void clear()
