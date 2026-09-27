@@ -40,9 +40,9 @@ using ConstraintTypeVector = std::vector<ConstraintType>;
 enum CvxOptStatus : std::uint8_t
 {
   CVX_SOLVED,
-  CVX_UNCONVERGED,  // stopped short of the solver's criteria; the values are a trial point that certifies nothing
   CVX_INFEASIBLE,
-  CVX_FAILED
+  CVX_FAILED,
+  CVX_UNCONVERGED  // stopped short of the solver's criteria; the values are a trial point that certifies nothing
 };
 
 /** @brief Convex optimization problem
