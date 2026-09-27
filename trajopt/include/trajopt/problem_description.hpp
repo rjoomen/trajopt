@@ -117,7 +117,13 @@ struct TrajOptResult
   std::vector<std::string> cost_names, cnt_names;
   DblVec cost_vals, cnt_viols;
   TrajArray traj;
+  /** @brief Why the solve ended; an iteration or time limit is reported as such, even when traj is feasible */
   sco::OptStatus status;
+  /** @brief Whether traj satisfies every constraint to the solver's cnt_tolerance */
+  bool best_is_feasible{ false };
+  /** @brief Whether traj is usable, per sco::isUsable: feasible, and the solve ended converged, on a limit, or on a
+   * spent QP failure budget */
+  bool usable{ false };
   TrajOptResult(sco::OptResults& opt, TrajOptProb& prob);
 };
 

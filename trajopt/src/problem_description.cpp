@@ -378,7 +378,11 @@ void generateInitTraj(TrajArray& init_traj, const ProblemConstructionInfo& pci)
 }
 
 TrajOptResult::TrajOptResult(sco::OptResults& opt, TrajOptProb& prob)
-  : cost_vals(opt.cost_vals), cnt_viols(opt.cnt_viols), status(opt.status)
+  : cost_vals(opt.cost_vals)
+  , cnt_viols(opt.cnt_viols)
+  , status(opt.status)
+  , best_is_feasible(opt.best_is_feasible)
+  , usable(sco::isUsable(opt))
 {
   for (const sco::Cost::Ptr& cost : prob.getCosts())
   {
