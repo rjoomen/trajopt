@@ -27,6 +27,7 @@
 #include <cmath>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,6 +39,21 @@
 
 namespace trajopt_sqp::test
 {
+/** @brief Minimize x^2 - 2x subject to x <= 0.5; the optimum x = 0.5 has multiplier 1 on the one-sided row */
+inline void setupOneSidedProblem(QPSolver& solver)
+{
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  trajopt_ifopt::Jacobian A(1, 1);
+  A.insert(0, 0) = 1.0;
+  trajopt_ifopt::Jacobian hessian(1, 1);
+  hessian.insert(0, 0) = 1.0;
+  solver.init(1, 1);
+  solver.updateHessianMatrix(hessian);
+  solver.updateGradient(Eigen::VectorXd::Constant(1, -2.0));
+  solver.updateLinearConstraintsMatrix(A);
+  solver.updateBounds(Eigen::VectorXd::Constant(1, -inf), Eigen::VectorXd::Constant(1, 0.5));
+}
+
 /** @brief One scripted override of a solve; an empty field leaves the inner solver's result as it is */
 struct ScriptedSolve
 {

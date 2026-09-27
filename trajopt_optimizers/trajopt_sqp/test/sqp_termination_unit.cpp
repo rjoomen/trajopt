@@ -94,6 +94,11 @@ trajopt_sqp::TrustRegionSQPSolver makeSolver(std::shared_ptr<trajopt_sqp::QPSolv
     qp_solver = std::make_shared<trajopt_sqp::OSQPEigenSolver>();
   return { std::move(qp_solver) };
 }
+
+std::shared_ptr<trajopt_sqp::test::ScriptedQPSolver> scriptedOsqp()
+{
+  return std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+}
 }  // namespace
 
 class SQPTermination : public testing::Test
@@ -200,8 +205,7 @@ private:
 
 TEST_F(SQPTermination, SpentFailureBudgetEndsTheSolve)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->every_solve =
       trajopt_sqp::test::ScriptedSolve{ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt };
   auto solver = makeSolver(scripted);
@@ -212,16 +216,17 @@ TEST_F(SQPTermination, SpentFailureBudgetEndsTheSolve)  // NOLINT
   EXPECT_EQ(solver.getResults().overall_iteration, solver.params.max_qp_solver_failures + 1);
 }
 
-TEST_F(SQPTermination, FailureShrinkingToTinyBoxIsATinyBoxExit)  // NOLINT
+TEST_F(SQPTermination, FailureShrinkingToTinyBoxIsAFlaggedTinyBoxExit)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->script.push_back({ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt });
   auto solver = makeSolver(scripted);
   solver.params.initial_trust_box_size = 1.5e-4;  // one shrink by trust_shrink_ratio lands below min_trust_box_size
   solver.solve(makeProblem());
   EXPECT_EQ(solver.getStatus(), SQPStatus::kConverged);
   EXPECT_EQ(scripted->solves, 1);
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
+  EXPECT_TRUE(solver.getResults().tiny_trust_region_after_uncertified);
 }
 
 TEST_F(SQPTermination, CallbackStopEndsTheSolve)  // NOLINT
@@ -252,8 +257,7 @@ public:
 
 TEST_F(SQPTermination, NonFiniteSolutionIsAFailedSolveAndNeverEvaluated)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->script.push_back({ std::nullopt, [](Eigen::VectorXd& x) { x[0] = std::nan(""); }, std::nullopt });
   auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
   auto solver = makeSolver(scripted);
@@ -283,8 +287,7 @@ TEST_F(SQPTermination, NonFiniteTrialMeritIsRejected)  // NOLINT
 
 TEST_F(SQPTermination, NonFiniteStartFailsFast)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
   problem->exact_costs_hook = [](int call, const Eigen::VectorXd& costs) {
     return call == 1 ? Eigen::VectorXd::Constant(costs.size(), std::numeric_limits<double>::infinity()) : costs;
@@ -298,8 +301,7 @@ TEST_F(SQPTermination, NonFiniteStartFailsFast)  // NOLINT
 
 TEST_F(SQPTermination, InfiniteStartViolationFailsFast)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem(0.5));
   problem->exact_violations_hook = [](int call, const trajopt_sqp::ConstraintViolations& v) {
     if (call != 1)
@@ -372,8 +374,7 @@ TEST_F(SQPTermination, CertifiedSolvesExitAsBefore)  // NOLINT
 
 TEST_F(SQPTermination, LargeGapSuppressesTheExit)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ std::nullopt, nullptr, 1.0 };
   auto solver = makeSolver(scripted);
   solver.solve(makeProblem());
@@ -383,8 +384,7 @@ TEST_F(SQPTermination, LargeGapSuppressesTheExit)  // NOLINT
 
 TEST_F(SQPTermination, NaNGapIsUncertified)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ std::nullopt, nullptr, std::nan("") };
   auto solver = makeSolver(scripted);
   solver.solve(makeProblem());
@@ -395,8 +395,7 @@ TEST_F(SQPTermination, NaNGapIsUncertified)  // NOLINT
 TEST_F(SQPTermination, PredictionBelowMinusGapGoesToTheRatioTest)  // NOLINT
 {
   // The first solution is moved away from the target, so the model predicts a merit increase
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->script.push_back({ std::nullopt, [](Eigen::VectorXd& x) { x[0] = -0.05; }, 0.0 });
   auto solver = makeSolver(scripted);
   solver.solve(makeProblem());
@@ -417,9 +416,8 @@ TEST_F(SQPTermination, RatioExitRecordsItsReason)  // NOLINT
 TEST_F(SQPTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
 {
   // Every trial point is charged +1 exact cost, so every step is rejected until the box is tiny
-  auto make = [](double gap, bool& flag) {
-    auto scripted =
-        std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto flag_after_rejections = [](double gap) {
+    auto scripted = scriptedOsqp();
     scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ std::nullopt, nullptr, gap };
     auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
     problem->exact_costs_hook = [](int call, const Eigen::VectorXd& costs) {
@@ -429,14 +427,10 @@ TEST_F(SQPTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
     solver.params.min_approx_improve = 1e-12;  // reach the tiny box before a small-improvement exit
     solver.solve(problem);
     EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
-    flag = solver.getResults().tiny_trust_region_after_uncertified;
+    return solver.getResults().tiny_trust_region_after_uncertified;
   };
-  bool certified_flag = true;
-  bool uncertified_flag = false;
-  make(0.0, certified_flag);
-  make(1.0, uncertified_flag);
-  EXPECT_FALSE(certified_flag);
-  EXPECT_TRUE(uncertified_flag);
+  EXPECT_FALSE(flag_after_rejections(0.0));
+  EXPECT_TRUE(flag_after_rejections(1.0));
 }
 
 TEST_F(SQPTermination, TinyBoxAfterNonFiniteRejectionsIsFlagged)  // NOLINT
@@ -454,14 +448,12 @@ TEST_F(SQPTermination, TinyBoxAfterNonFiniteRejectionsIsFlagged)  // NOLINT
 
 TEST_F(SQPTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->every_solve =
       trajopt_sqp::test::ScriptedSolve{ trajopt_sqp::QPSolveStatus::kUnconverged, nullptr, std::nullopt };
   auto solver = makeSolver(scripted);
   solver.solve(makeProblem());
   EXPECT_EQ(solver.getResults().n_unconverged_qp_solves, scripted->solves);
-  EXPECT_NE(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kSmallImprovement);
   // Neither small-improvement exit is taken; the solve ends on the tiny box, flagged
   EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
   EXPECT_TRUE(solver.getResults().tiny_trust_region_after_uncertified);
@@ -501,18 +493,6 @@ TEST_F(SQPTermination, ScriptedSolverReportsTheScriptedStatusElseTheWrappedOne) 
   EXPECT_EQ(scripted.getSolverStatus(), trajopt_sqp::QPSolverStatus::kInitialized);
 }
 
-TEST_F(SQPTermination, TinyBoxAfterFailureShrinkIsFlagged)  // NOLINT
-{
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
-  scripted->script.push_back({ trajopt_sqp::QPSolveStatus::kFailed, nullptr, std::nullopt });
-  auto solver = makeSolver(scripted);
-  solver.params.initial_trust_box_size = 1.5e-4;
-  solver.solve(makeProblem());
-  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
-  EXPECT_TRUE(solver.getResults().tiny_trust_region_after_uncertified);
-}
-
 namespace
 {
 /** @brief Records the first entry of every proposal the solver evaluates */
@@ -529,8 +509,7 @@ struct ProposalRecorder : trajopt_sqp::SQPCallback
 
 TEST_F(SQPTermination, UnconvergedSolutionIsClampedToLimitsAndBox)  // NOLINT
 {
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->script.push_back(
       { trajopt_sqp::QPSolveStatus::kUnconverged, [](Eigen::VectorXd& x) { x[0] = 5.0; }, std::nullopt });
   auto solver = makeSolver(scripted);
@@ -548,8 +527,7 @@ TEST_F(SQPTermination, UnconvergedSolutionIsClampedToLimitsAndBox)  // NOLINT
 TEST_F(SQPTermination, UnconvergedSolutionIsClampedToALimitTighterThanTheBox)  // NOLINT
 {
   // Start at 0.95 with box 0.1: the box reaches 1.05, the limit only 1.0; the edit lies between them
-  auto scripted =
-      std::make_shared<trajopt_sqp::test::ScriptedQPSolver>(std::make_shared<trajopt_sqp::OSQPEigenSolver>());
+  auto scripted = scriptedOsqp();
   scripted->script.push_back(
       { trajopt_sqp::QPSolveStatus::kUnconverged, [](Eigen::VectorXd& x) { x[0] = 1.04; }, std::nullopt });
   auto solver = makeSolver(scripted);

@@ -45,20 +45,7 @@ TEST(OSQPModel, DualityGapSmallAtSolution)  // NOLINT
   EXPECT_LT(model->getDualityGap(), 1e-4);
 }
 
-TEST(OSQPModel, DualityGapFiniteAtIterationCap)  // NOLINT
-{
-  // Silence the unconverged-solve WARN that every capped solve logs
-  tesseract::common::getLogger()->set_level(spdlog::level::err);
-  auto config = std::make_shared<OSQPModelConfig>();
-  config->settings.max_iter = 1;
-  config->settings.polishing = 0;
-  const Model::Ptr model = createModel(ModelType::OSQP, config);
-  setupOneSidedProblem(*model);
-  model->optimize();
-  EXPECT_TRUE(std::isfinite(model->getDualityGap()));
-}
-
-TEST(OSQPModel, IterationCapReturnsUnconvergedValues)  // NOLINT
+TEST(OSQPModel, IterationCapReturnsUnconvergedValuesWithFiniteGap)  // NOLINT
 {
   // Silence the unconverged-solve WARN that every capped solve logs
   tesseract::common::getLogger()->set_level(spdlog::level::err);
@@ -69,6 +56,7 @@ TEST(OSQPModel, IterationCapReturnsUnconvergedValues)  // NOLINT
   const Var x = setupOneSidedProblem(*model);
   EXPECT_EQ(model->optimize(), CVX_UNCONVERGED);
   EXPECT_TRUE(std::isfinite(model->getVarValue(x)));
+  EXPECT_TRUE(std::isfinite(model->getDualityGap()));
 }
 
 TEST(OSQPModel, DualityGapInfiniteAfterInfeasibleSolve)  // NOLINT

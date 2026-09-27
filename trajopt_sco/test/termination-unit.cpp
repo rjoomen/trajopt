@@ -61,6 +61,15 @@ OptProb::Ptr makeProblem(std::optional<double> pin = std::nullopt)
   }
   return prob;
 }
+
+/** @brief Two variables in [-1, 1] with the given cost, solved by the given model */
+OptProb::Ptr makeScriptedProblem(const Model::Ptr& model, double (*cost)(const Eigen::VectorXd&))
+{
+  auto prob = std::make_shared<test::ScriptedProb>(model);
+  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
+  prob->addCost(std::make_shared<CostFromFunc>(ScalarOfVector::construct(cost), prob->getVars(), "cost"));
+  return prob;
+}
 }  // namespace
 
 class ScoTermination : public testing::Test
@@ -103,10 +112,7 @@ TEST_F(ScoTermination, EveryQPIterationCappedStillEndsHonestlyWithinBounds)  // 
 {
   auto config = std::make_shared<OSQPModelConfig>();
   config->settings.max_iter = 3;
-  auto prob = std::make_shared<test::ScriptedProb>(createModel(ModelType::OSQP, config));
-  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
-  prob->addCost(std::make_shared<CostFromFunc>(ScalarOfVector::construct(&targetCost), prob->getVars(), "target"));
-  BasicTrustRegionSQP solver(prob);
+  BasicTrustRegionSQP solver(makeScriptedProblem(createModel(ModelType::OSQP, config), &targetCost));
   solver.initialize({ 0.0, 0.0 });
   EXPECT_NE(solver.optimize(), OPT_FAILED);
   EXPECT_GT(solver.results().n_unconverged_qp_solves, 0);
@@ -142,14 +148,6 @@ double partialCost(const Eigen::VectorXd& x)
   return x(0) > 0.5 ? std::nan("") : sq(x(0) - 0.8) + sq(x(1));
 }
 
-OptProb::Ptr makeScriptedProblem(const std::shared_ptr<test::ScriptedModel>& model,
-                                 double (*cost)(const Eigen::VectorXd&))
-{
-  auto prob = std::make_shared<test::ScriptedProb>(model);
-  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
-  prob->addCost(std::make_shared<CostFromFunc>(ScalarOfVector::construct(cost), prob->getVars(), "cost"));
-  return prob;
-}
 }  // namespace
 
 TEST_F(ScoTermination, NonFiniteSolutionIsAFailedSolveAndNeverEvaluated)  // NOLINT
@@ -383,7 +381,6 @@ TEST_F(ScoTermination, UnconvergedSolveIsAProposalThatCannotExit)  // NOLINT
   model->every_solve = test::ScriptedModelSolve{ CVX_UNCONVERGED, nullptr, std::nullopt };
   const OptResults r = runScripted(model);
   EXPECT_EQ(r.n_unconverged_qp_solves, model->solves);
-  EXPECT_NE(r.exit_reason, EXIT_SMALL_IMPROVEMENT);
   // Neither small-improvement exit is taken; the solve ends on the tiny box, flagged
   EXPECT_EQ(r.exit_reason, EXIT_TINY_TRUST_REGION);
   EXPECT_TRUE(r.tiny_trust_region_after_uncertified);

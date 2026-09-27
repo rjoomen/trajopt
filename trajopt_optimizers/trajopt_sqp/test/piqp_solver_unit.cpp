@@ -32,9 +32,11 @@ TRAJOPT_IGNORE_WARNINGS_POP
 
 #include <trajopt_ifopt/core/eigen_types.h>
 #include <trajopt_sqp/piqp_solver.h>
+#include "scripted_qp_solver.h"
 
 using trajopt_sqp::PIQPSolver;
 using trajopt_sqp::QPSolverStatus;
+using trajopt_sqp::test::setupOneSidedProblem;
 
 namespace
 {
@@ -205,23 +207,6 @@ TEST(PIQPSolverUnit, DenseKKTSolverFails)  // NOLINT
       solver, Eigen::Vector2d::Zero(), A, Eigen::Matrix<double, 1, 1>(2.0), Eigen::Matrix<double, 1, 1>(2.0), x));
   EXPECT_EQ(solver.getSolverStatus(), QPSolverStatus::kFailed);
 }
-
-namespace
-{
-/** @brief Minimize x^2 - 2x subject to x <= 0.5; the optimum x = 0.5 has multiplier 1 on the one-sided row */
-void setupOneSidedProblem(trajopt_sqp::QPSolver& solver)
-{
-  trajopt_ifopt::Jacobian A(1, 1);
-  A.insert(0, 0) = 1.0;
-  trajopt_ifopt::Jacobian hessian(1, 1);
-  hessian.insert(0, 0) = 1.0;
-  solver.init(1, 1);
-  solver.updateHessianMatrix(hessian);
-  solver.updateGradient(Eigen::VectorXd::Constant(1, -2.0));
-  solver.updateLinearConstraintsMatrix(A);
-  solver.updateBounds(Eigen::VectorXd::Constant(1, -kInf), Eigen::VectorXd::Constant(1, 0.5));
-}
-}  // namespace
 
 TEST(PIQPSolverUnit, DualityGapReportedWithGapCheckOff)  // NOLINT
 {
