@@ -382,7 +382,8 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
 
     // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small
     const double gap = certifiedGap();
-    const bool uncertified = !(gap < params.min_approx_improve);
+    // With min_approx_improve <= 0 no finite gap can block the small-improvement exit; only a non-finite one counts
+    const bool uncertified = !std::isfinite(gap) || (params.min_approx_improve > 0 && gap >= params.min_approx_improve);
     const double approx = results_.approx_merit_improve;
     const double denom = std::max(std::abs(results_.best_exact_merit), 1e-12);
     const double roundoff = 1e-12 * std::max(1.0, std::abs(results_.best_exact_merit));

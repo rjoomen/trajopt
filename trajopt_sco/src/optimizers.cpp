@@ -997,7 +997,9 @@ OptStatus BasicTrustRegionSQP::optimize()
 
         // The best improvement the model offers lies in [approx, approx + gap]; exit only when its upper end is small
         const double gap = certifiedGap(status);
-        const bool uncertified = !(gap < param_.min_approx_improve);
+        // With min_approx_improve <= 0 no finite gap can block the small-improvement exit; only a non-finite one counts
+        const bool uncertified =
+            !std::isfinite(gap) || (param_.min_approx_improve > 0 && gap >= param_.min_approx_improve);
         const double approx = iteration_results.approx_merit_improve;
         const double merit_denom = std::max(std::abs(iteration_results.old_merit), 1e-12);
         const double roundoff = 1e-12 * std::max(1.0, std::abs(iteration_results.old_merit));
