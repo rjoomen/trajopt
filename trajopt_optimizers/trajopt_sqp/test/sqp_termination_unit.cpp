@@ -359,6 +359,22 @@ TEST_F(SQPTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
   EXPECT_TRUE(flag_after_rejections(1.0));
 }
 
+TEST_F(SQPTermination, TinyBoxAfterExactRejectionsWithoutThresholdIsNotFlagged)  // NOLINT
+{
+  // With the small-improvement exit disabled, a finite gap cannot block it, so exact rejections certify the tiny box
+  auto scripted = scriptedOsqp();
+  scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ std::nullopt, nullptr, 0.0 };
+  auto problem = std::make_shared<trajopt_sqp::test::ScriptedQPProblem>(makeProblem());
+  problem->exact_costs_hook = [](int call, const Eigen::VectorXd& costs) {
+    return call == 1 ? costs : Eigen::VectorXd(costs.array() + 1.0);
+  };
+  auto solver = makeSolver(scripted);
+  solver.params.min_approx_improve = 0.0;
+  solver.solve(problem);
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kTinyTrustRegion);
+  EXPECT_FALSE(solver.getResults().tiny_trust_region_after_uncertified);
+}
+
 TEST_F(SQPTermination, TinyBoxAfterNonFiniteRejectionsIsFlagged)  // NOLINT
 {
   // Every trial point has a NaN exact cost, so every step is rejected until the box is tiny

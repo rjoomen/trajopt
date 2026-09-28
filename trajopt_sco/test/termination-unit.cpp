@@ -329,6 +329,22 @@ TEST_F(ScoTermination, TinyBoxAfterUncertifiedRejectionsIsFlagged)  // NOLINT
   EXPECT_TRUE(run(1.0));
 }
 
+TEST_F(ScoTermination, TinyBoxAfterExactRejectionsWithoutThresholdIsNotFlagged)  // NOLINT
+{
+  // With the small-improvement exit disabled, a finite gap cannot block it, so exact rejections certify the tiny box
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ std::nullopt, nullptr, 0.0 };
+  auto prob = std::make_shared<test::ScriptedProb>(model);
+  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
+  prob->addCost(std::make_shared<ChargedTargetCost>(prob->getVars(), DblVec{ 0.0, 0.0 }));
+  BasicTrustRegionSQP solver(prob);
+  solver.getParameters().min_approx_improve = 0.0;
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  EXPECT_EQ(solver.results().exit_reason, EXIT_TINY_TRUST_REGION);
+  EXPECT_FALSE(solver.results().tiny_trust_region_after_uncertified);
+}
+
 TEST_F(ScoTermination, TinyBoxAfterNonFiniteRejectionsIsFlagged)  // NOLINT
 {
   // Every trial point has a NaN exact cost, so every step is rejected until the box is tiny
