@@ -167,6 +167,8 @@ std::string toString(SQPExitReason reason)
       return "SMALL_IMPROVEMENT_RATIO";
     case SQPExitReason::kTinyTrustRegion:
       return "TINY_TRUST_REGION";
+    case SQPExitReason::kUncertifiedInfeasible:
+      return "UNCERTIFIED_INFEASIBLE";
     default:
       return "UNKNOWN";
   }

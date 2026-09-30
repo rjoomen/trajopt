@@ -414,7 +414,17 @@ void TrustRegionSQPSolver::runTrustRegionLoop()
     }
 
     if (approx < params.min_approx_improve || approx / denom < params.min_approx_improve_frac)
+    {
       ++results_.n_suppressed_exits;
+      // Raising the penalty needs no certificate; only claiming convergence does
+      if (!bestIsFeasible())
+      {
+        TESSERACT_LOG_DEBUG("Improvement is uncertified but small at an infeasible iterate; increasing the penalty");
+        recordInnerExit(SQPExitReason::kUncertifiedInfeasible);
+        status_ = SQPStatus::kConverged;
+        return;
+      }
+    }
 
     // Check if the bounding trust region needs to be shrunk
     // This happens if the exact solution got worse or if the QP approximation deviates from the exact by too much

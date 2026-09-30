@@ -167,7 +167,8 @@ enum class SQPExitReason : std::uint8_t
   kNone,                  /**< No inner-loop exit yet */
   kSmallImprovement,      /**< The certified predicted improvement fell below min_approx_improve */
   kSmallImprovementRatio, /**< The certified improvement ratio fell below min_approx_improve_frac */
-  kTinyTrustRegion        /**< The trust region shrank below min_trust_box_size */
+  kTinyTrustRegion,       /**< The trust region shrank below min_trust_box_size */
+  kUncertifiedInfeasible  /**< An uncertified small improvement at an infeasible iterate raised the penalty */
 };
 
 /** @brief Return a string representation of the SQPExitReason */

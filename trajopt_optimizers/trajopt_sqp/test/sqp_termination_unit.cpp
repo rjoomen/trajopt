@@ -392,6 +392,19 @@ TEST_F(SQPTermination, NaNGapIsUncertified)  // NOLINT
   EXPECT_GT(solver.getResults().n_suppressed_exits, 0);
 }
 
+TEST_F(SQPTermination, UncertifiedSmallImprovementAtAnInfeasibleIterateRaisesThePenalty)  // NOLINT
+{
+  auto scripted = scriptedOsqp();
+  scripted->every_solve = trajopt_sqp::test::ScriptedSolve{ std::nullopt, nullptr, 1.0 };
+  auto solver = makeSolver(scripted);
+  solver.params.initial_merit_error_coeff = 0.01;  // too weak to hold the pin against the target cost
+  solver.params.max_merit_coeff_increases = 1;
+  solver.solve(makeProblem(-0.5));
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kPenaltyIterationLimit);
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kUncertifiedInfeasible);
+  EXPECT_GT(solver.getResults().n_suppressed_exits, 0);
+}
+
 TEST_F(SQPTermination, PredictionBelowMinusGapGoesToTheRatioTest)  // NOLINT
 {
   // The first solution is moved away from the target, so the model predicts a merit increase
