@@ -64,6 +64,10 @@ std::string toString(OptExitReason reason)
       return "EXIT_SMALL_IMPROVEMENT_RATIO";
     case OptExitReason::EXIT_TINY_TRUST_REGION:
       return "EXIT_TINY_TRUST_REGION";
+    case OptExitReason::EXIT_UNCERTIFIED_INFEASIBLE:
+      return "EXIT_UNCERTIFIED_INFEASIBLE";
+    case OptExitReason::EXIT_ITERATION_LIMIT:
+      return "EXIT_ITERATION_LIMIT";
     default:
       return "EXIT_UNKNOWN";
   }
@@ -1030,7 +1034,16 @@ OptStatus BasicTrustRegionSQP::optimize()
         }
 
         if (approx < param_.min_approx_improve || approx / merit_denom < param_.min_approx_improve_frac)
+        {
           ++results_.n_suppressed_exits;
+          // Raising the penalty needs no certificate; only claiming convergence does
+          if (!bestIsFeasible())
+          {
+            TESSERACT_LOG_INFO("improvement is uncertified but small at an infeasible iterate; increasing the penalty");
+            record_inner_exit(EXIT_UNCERTIFIED_INFEASIBLE);
+            goto penaltyadjustment;
+          }
+        }
 
         if (iteration_results.exact_merit_improve < 0 ||
             iteration_results.merit_improve_ratio < param_.improve_ratio_threshold)
@@ -1062,6 +1075,12 @@ OptStatus BasicTrustRegionSQP::optimize()
       {
         TESSERACT_LOG_INFO("iteration limit");
         retval = OPT_SCO_ITERATION_LIMIT;
+        // An infeasible iterate at the limit moves on to a higher penalty rather than ending the solve
+        if (!bestIsFeasible())
+        {
+          record_inner_exit(EXIT_ITERATION_LIMIT);
+          goto penaltyadjustment;
+        }
         goto cleanup;
       }
     } /* sqp loop */

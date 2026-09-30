@@ -44,7 +44,9 @@ enum OptExitReason : std::uint8_t
   EXIT_NONE,
   EXIT_SMALL_IMPROVEMENT,        // the certified predicted improvement fell below min_approx_improve
   EXIT_SMALL_IMPROVEMENT_RATIO,  // the certified improvement ratio fell below min_approx_improve_frac
-  EXIT_TINY_TRUST_REGION         // the trust region shrank below min_trust_box_size
+  EXIT_TINY_TRUST_REGION,        // the trust region shrank below min_trust_box_size
+  EXIT_UNCERTIFIED_INFEASIBLE,   // an uncertified small improvement at an infeasible iterate raised the penalty
+  EXIT_ITERATION_LIMIT           // max_iter was reached at an infeasible iterate and raised the penalty
 };
 
 /**
@@ -67,7 +69,8 @@ struct OptResults
   bool best_is_feasible{ false };
   /**
    * @brief Which inner-loop test caused the most recent inner exit; EXIT_NONE before the first
-   * @details Kept when a later convexification ends on an accepted step or the solve ends on a limit
+   * @details Kept when a later convexification ends on an accepted step or the solve ends on a time limit or on an
+   * iteration limit at a feasible iterate
    */
   OptExitReason exit_reason{ EXIT_NONE };
   /** @brief Small-improvement exits the uncertified test would have taken but the certified test did not */
@@ -154,7 +157,10 @@ struct BasicTrustRegionSQPParameters
    * unconverged solve never exits this way
    */
   double min_approx_improve_frac = std::numeric_limits<double>::lowest();
-  /** @brief Max number of convexifications per penalty iteration; the count restarts when the penalty increases */
+  /**
+   * @brief Max number of convexifications per penalty iteration; the count restarts when the penalty increases.
+   * Reaching it at an infeasible iterate raises the penalty; reaching it at a feasible one ends the solve.
+   */
   int max_iter = 50;
   /** @brief If improvement is less than improve_ratio_threshold, shrink trust region by this ratio */
   double trust_shrink_ratio = 0.1;
