@@ -87,6 +87,27 @@ TEST_F(ScoTermination, IterationLimitKeepsItsStatusWhenFeasible)  // NOLINT
   EXPECT_TRUE(isUsable(solver.results()));
 }
 
+TEST_F(ScoTermination, IterationLimitAtAnInfeasibleIterateRaisesThePenalty)  // NOLINT
+{
+  BasicTrustRegionSQP solver(makeProblem(0.5));  // one box-limited step per penalty round cannot reach the pin
+  solver.getParameters().max_iter = 1;
+  solver.getParameters().max_merit_coeff_increases = 2;
+  solver.initialize({ 0.0, 0.0 });
+  EXPECT_EQ(solver.optimize(), OPT_PENALTY_ITERATION_LIMIT);
+  EXPECT_EQ(solver.results().exit_reason, EXIT_ITERATION_LIMIT);
+  EXPECT_FALSE(solver.results().best_is_feasible);
+}
+
+TEST_F(ScoTermination, IterationLimitRoundsReachAPinOneRoundCannot)  // NOLINT
+{
+  BasicTrustRegionSQP solver(makeProblem(0.5));
+  solver.getParameters().max_iter = 1;
+  solver.initialize({ 0.0, 0.0 });
+  solver.optimize();
+  EXPECT_TRUE(solver.results().best_is_feasible);
+  EXPECT_NEAR(solver.x()[0], 0.5, 1e-4);
+}
+
 TEST_F(ScoTermination, TimeLimitBeforeAnySolveJudgesTheStartPoint)  // NOLINT
 {
   BasicTrustRegionSQP solver(makeProblem(0.0));  // start point satisfies the pin
@@ -289,6 +310,29 @@ TEST_F(ScoTermination, NaNGapIsUncertified)  // NOLINT
   const OptResults r = runScripted(model);
   EXPECT_NE(r.exit_reason, EXIT_SMALL_IMPROVEMENT);
   EXPECT_GT(r.n_suppressed_exits, 0);
+}
+
+TEST_F(ScoTermination, UncertifiedSmallImprovementAtAnInfeasibleIterateRaisesThePenalty)  // NOLINT
+{
+  auto model = scriptedOsqp();
+  model->every_solve = test::ScriptedModelSolve{ std::nullopt, nullptr, 1.0 };
+  auto prob = std::make_shared<test::ScriptedProb>(model);
+  prob->createVariables({ "x0", "x1" }, { -1.0, -1.0 }, { 1.0, 1.0 });
+  prob->addCost(std::make_shared<CostFromFunc>(ScalarOfVector::construct(&targetCost), prob->getVars(), "target"));
+  auto err = VectorOfVector::construct([](const Eigen::VectorXd& x) {
+    Eigen::VectorXd out(1);
+    out(0) = x(0) + 0.5;
+    return out;
+  });
+  prob->addConstraint(std::make_shared<ConstraintFromErrFunc>(err, prob->getVars(), Eigen::VectorXd(), EQ, "pin"));
+
+  BasicTrustRegionSQP solver(prob);
+  solver.getParameters().initial_merit_error_coeff = 0.01;  // too weak to hold the pin against the target cost
+  solver.getParameters().max_merit_coeff_increases = 1;
+  solver.initialize({ 0.0, 0.0 });
+  EXPECT_EQ(solver.optimize(), OPT_PENALTY_ITERATION_LIMIT);
+  EXPECT_EQ(solver.results().exit_reason, EXIT_UNCERTIFIED_INFEASIBLE);
+  EXPECT_GT(solver.results().n_suppressed_exits, 0);
 }
 
 TEST_F(ScoTermination, PredictionBelowMinusGapGoesToTheRatioTest)  // NOLINT
