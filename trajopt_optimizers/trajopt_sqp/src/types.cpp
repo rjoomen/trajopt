@@ -169,6 +169,8 @@ std::string toString(SQPExitReason reason)
       return "TINY_TRUST_REGION";
     case SQPExitReason::kUncertifiedInfeasible:
       return "UNCERTIFIED_INFEASIBLE";
+    case SQPExitReason::kIterationLimit:
+      return "ITERATION_LIMIT";
     default:
       return "UNKNOWN";
   }

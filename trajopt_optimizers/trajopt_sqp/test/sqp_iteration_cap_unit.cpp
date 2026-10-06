@@ -132,11 +132,24 @@ TEST_F(SQPIterationCap, IterationLimitAtAnInfeasibleIterateRaisesThePenalty)  //
   solver.params.max_merit_coeff_increases = 2;
   solver.solve(makeProblem(5.0));  // the pin lies outside the variable bounds
   EXPECT_EQ(solver.getStatus(), SQPStatus::kPenaltyIterationLimit);
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kIterationLimit);
+  EXPECT_EQ(trajopt_sqp::toString(trajopt_sqp::SQPExitReason::kIterationLimit), "ITERATION_LIMIT");
   EXPECT_EQ(solver.getResults().penalty_iteration, 1);
   // Without the limit the growing trust box would take several convexifications to reach the variable bound
   EXPECT_EQ(solver.getResults().convexify_iteration, 1);
   EXPECT_FALSE(solver.getResults().best_is_feasible);
   EXPECT_FALSE(trajopt_sqp::isUsable(solver.getStatus(), solver.getResults()));
+}
+
+TEST_F(SQPIterationCap, PenaltyIterationsReachAPinOneCannot)  // NOLINT
+{
+  auto solver = makeSolver();
+  solver.params.max_iter = 1;
+  solver.solve(makeProblem(0.5));
+  EXPECT_EQ(solver.getStatus(), SQPStatus::kIterationLimit);
+  EXPECT_GE(solver.getResults().penalty_iteration, 1);
+  EXPECT_TRUE(solver.getResults().best_is_feasible);
+  EXPECT_NEAR(solver.getResults().best_var_vals[0], 0.5, 1e-4);
 }
 
 TEST_F(SQPIterationCap, EachPenaltyIterationGetsItsOwnIterationBudget)  // NOLINT
@@ -149,6 +162,7 @@ TEST_F(SQPIterationCap, EachPenaltyIterationGetsItsOwnIterationBudget)  // NOLIN
   solver.params.max_merit_coeff_increases = 3;
   solver.solve(makeProblem(0.9));
   EXPECT_EQ(solver.getStatus(), SQPStatus::kPenaltyIterationLimit);
+  EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kIterationLimit);
   EXPECT_EQ(solver.getResults().overall_iteration, 9);
   EXPECT_EQ(solver.getResults().convexify_iteration, 3);
   EXPECT_NEAR(solver.getResults().best_var_vals[0], 0.09, 1e-3);
@@ -170,6 +184,7 @@ TEST_F(SQPIterationCap, ZeroIterationBudgetEndsWithoutAStep)  // NOLINT
     solver.params.max_iter = 0;
     solver.solve(makeProblem(0.5));
     EXPECT_EQ(solver.getStatus(), SQPStatus::kPenaltyIterationLimit);
+    EXPECT_EQ(solver.getResults().exit_reason, trajopt_sqp::SQPExitReason::kIterationLimit);
     EXPECT_EQ(solver.getResults().overall_iteration, 0);
     EXPECT_FALSE(solver.getResults().best_is_feasible);
   }

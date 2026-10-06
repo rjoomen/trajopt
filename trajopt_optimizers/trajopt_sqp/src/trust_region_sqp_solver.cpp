@@ -146,6 +146,8 @@ void TrustRegionSQPSolver::solve(const QPProblem::Ptr& qp_problem)
         // An infeasible iterate at the limit moves on to a higher penalty rather than ending the solve
         if (bestIsFeasible())
           status_ = SQPStatus::kIterationLimit;
+        else
+          recordInnerExit(SQPExitReason::kIterationLimit);
         break;
       }
 

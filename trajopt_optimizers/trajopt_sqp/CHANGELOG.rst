@@ -10,6 +10,7 @@ Forthcoming
 * End the solve on a spent QP failure budget (``kQPSolveFailed``)
 * Add ``SQPStatus::kNonFiniteMerit``; treat non-finite QP solutions as failed solves and non-finite merits as
   rejected steps
+* Add ``SQPExitReason::kIterationLimit``, recorded when ``max_iter`` ends a penalty iteration at an infeasible iterate
 * Pass the full gradient to OSQP (entries below 1e-7 were dropped from the solver's copy only)
 * Breaking: ``QPSolver`` gains ``getDualityGap()`` (a new pure virtual), reporting +infinity when the most recent
   solve returned no solution; small-improvement exits require ``approx_improve + gap`` below
